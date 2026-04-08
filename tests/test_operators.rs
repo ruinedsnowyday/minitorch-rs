@@ -146,8 +146,7 @@ proptest! {
         ls1 in proptest::collection::vec(small_floats(), 5),
         ls2 in proptest::collection::vec(small_floats(), 5),
     ) {
-        // TODO(you): Implement for Task 0.3.
-        // sum(ls1) + sum(ls2) should equal sum of pairwise sums
+        assert_close(sum(&add_lists(&ls1, &ls2)), add(sum(&ls1), sum(&ls2)));
     }
 
     #[test]
