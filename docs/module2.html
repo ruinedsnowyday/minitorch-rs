@@ -1,0 +1,1665 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Module 2 — Tensors</title>
+<style>
+  :root {
+    --bg: #1a1a1a;
+    --bg-soft: #232323;
+    --bg-code: #252525;
+    --bg-panel: #1f1f1f;
+    --fg: #d4d4d4;
+    --fg-mute: #888;
+    --accent: #61afef;
+    --accent-soft: #4a8db5;
+    --warn: #e5c07b;
+    --ok: #98c379;
+    --rule: #333;
+    --kw: #c678dd;
+    --ty: #e5c07b;
+    --str: #98c379;
+    --num: #d19a66;
+    --cmt: #6a737d;
+    --fn-color: #61afef;
+  }
+  * { box-sizing: border-box; }
+  html { background: var(--bg); }
+  body {
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    line-height: 1.55;
+    color: var(--fg);
+    background: var(--bg);
+    margin: 0;
+    padding: 0;
+  }
+  main, header, footer { max-width: 980px; margin: 0 auto; padding: 0 24px; }
+  header {
+    padding-top: 48px;
+    padding-bottom: 16px;
+    border-bottom: 1px solid var(--rule);
+    margin-bottom: 32px;
+  }
+  header h1 {
+    font-size: 2.2em;
+    margin: 0 0 6px 0;
+    color: var(--accent);
+    font-weight: 600;
+  }
+  header .sub {
+    color: var(--fg-mute);
+    margin: 0;
+    font-size: 1.05em;
+  }
+  header .meta {
+    color: var(--fg-mute);
+    font-size: 0.9em;
+    margin-top: 12px;
+  }
+  header .meta a { color: var(--accent-soft); }
+  h2 {
+    color: var(--accent);
+    border-bottom: 1px solid var(--rule);
+    padding-bottom: 6px;
+    margin-top: 48px;
+    font-weight: 600;
+  }
+  h3 {
+    color: var(--warn);
+    margin-top: 32px;
+    font-weight: 500;
+  }
+  h4 { color: var(--fg); margin-top: 24px; font-weight: 500; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  p { margin: 12px 0; }
+  ul, ol { padding-left: 24px; }
+  li { margin: 4px 0; }
+  code {
+    background: var(--bg-code);
+    color: var(--fg);
+    padding: 1px 5px;
+    border-radius: 3px;
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.92em;
+  }
+  pre {
+    background: var(--bg-code);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 14px 18px;
+    overflow-x: auto;
+    line-height: 1.5;
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.88em;
+  }
+  pre code { background: none; padding: 0; }
+  .kw  { color: var(--kw); }
+  .ty  { color: var(--ty); }
+  .str { color: var(--str); }
+  .num { color: var(--num); }
+  .cmt { color: var(--cmt); font-style: italic; }
+  .fn  { color: var(--fn-color); }
+  .toc {
+    background: var(--bg-soft);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 18px 24px;
+    margin-bottom: 32px;
+  }
+  .toc h2 { margin: 0 0 12px 0; font-size: 1.1em; border: none; padding: 0; }
+  .toc ol { margin: 0; padding-left: 22px; }
+  .toc li { margin: 3px 0; }
+  .toc ul { padding-left: 22px; margin-top: 3px; margin-bottom: 6px; }
+  .toc ul li { color: var(--fg-mute); font-size: 0.95em; }
+  .side-by-side {
+    display: flex;
+    gap: 12px;
+    margin: 16px 0;
+  }
+  .side-by-side > div { flex: 1; min-width: 0; }
+  .side-by-side h4 {
+    margin: 0 0 6px 0;
+    font-size: 0.9em;
+    color: var(--fg-mute);
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 600;
+  }
+  .side-by-side pre { margin: 0; }
+  details {
+    background: var(--bg-soft);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 0 16px;
+    margin: 16px 0;
+  }
+  details summary {
+    cursor: pointer;
+    padding: 12px 0;
+    color: var(--warn);
+    font-weight: 500;
+    user-select: none;
+  }
+  details[open] summary { border-bottom: 1px solid var(--rule); margin-bottom: 12px; }
+  details summary::marker { color: var(--fg-mute); }
+  .callout {
+    background: var(--bg-soft);
+    border-left: 3px solid var(--accent);
+    padding: 12px 16px;
+    margin: 16px 0;
+    border-radius: 0 4px 4px 0;
+  }
+  .callout.warn { border-left-color: var(--warn); }
+  .callout.ok { border-left-color: var(--ok); }
+  .callout p:first-child { margin-top: 0; }
+  .callout p:last-child { margin-bottom: 0; }
+  .figure {
+    background: var(--bg-soft);
+    border: 1px solid var(--rule);
+    border-radius: 6px;
+    padding: 18px;
+    margin: 20px 0;
+    text-align: center;
+  }
+  .figure .caption {
+    color: var(--fg-mute);
+    font-size: 0.88em;
+    margin-top: 10px;
+    font-style: italic;
+  }
+  svg { display: block; margin: 0 auto; max-width: 100%; height: auto; }
+  .ascii {
+    text-align: left;
+    background: var(--bg-code);
+    padding: 12px 16px;
+    border-radius: 4px;
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.85em;
+    line-height: 1.3;
+    color: var(--fg);
+    white-space: pre;
+    overflow-x: auto;
+  }
+  table {
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 0.92em;
+  }
+  th, td {
+    border: 1px solid var(--rule);
+    padding: 6px 12px;
+    text-align: left;
+  }
+  th { background: var(--bg-soft); color: var(--accent); }
+  td code { background: var(--bg); }
+  hr { border: none; border-top: 1px solid var(--rule); margin: 32px 0; }
+  footer {
+    margin-top: 64px;
+    padding-bottom: 48px;
+    color: var(--fg-mute);
+    font-size: 0.9em;
+    border-top: 1px solid var(--rule);
+    padding-top: 16px;
+  }
+  .file-tag {
+    color: var(--warn);
+    font-family: "SF Mono", Menlo, Monaco, Consolas, monospace;
+    font-size: 0.85em;
+  }
+  .pill {
+    display: inline-block;
+    background: var(--bg-soft);
+    color: var(--accent);
+    padding: 2px 8px;
+    border-radius: 10px;
+    font-size: 0.78em;
+    border: 1px solid var(--rule);
+    margin-right: 6px;
+  }
+</style>
+</head>
+<body>
+
+<header>
+  <h1>Module 2 — Tensors</h1>
+  <p class="sub">From scalar autodiff to multi-dimensional arrays, the lazy way.</p>
+  <p class="meta">
+    Companion to module 1 (autodiff on scalars) ·
+    Reference: <a href="https://minitorch.github.io/module2/module2/">minitorch.github.io/module2</a>
+  </p>
+</header>
+
+<main>
+
+<nav class="toc">
+  <h2>Contents</h2>
+  <ol>
+    <li><a href="#why">Why tensors</a></li>
+    <li><a href="#tensor-data">TensorData layout</a>
+      <ul><li><a href="#t21">Task 2.1 — Implement TensorData</a></li></ul>
+    </li>
+    <li><a href="#bcast">Indexing &amp; broadcasting</a>
+      <ul><li><a href="#t22">Task 2.2 — TensorOps and SimpleOps</a></li></ul>
+    </li>
+    <li><a href="#wrapper">Tensor wrapper &amp; autograd graph</a>
+      <ul>
+        <li><a href="#rc">Aside: why <code>Rc&lt;RefCell&lt;&gt;&gt;</code> here is fine</a></li>
+        <li><a href="#t23">Task 2.3 — Tensor + TensorGraph + TensorOp</a></li>
+      </ul>
+    </li>
+    <li><a href="#ops">Operator overloading</a>
+      <ul><li><a href="#t24">Task 2.4 — Implement the ops</a></li></ul>
+    </li>
+    <li><a href="#backward">Backward through tensor ops</a></li>
+    <li><a href="#together">Putting it together</a>
+      <ul><li><a href="#t25">Task 2.5 — Rewrite Linear / Network / loss / train</a></li></ul>
+    </li>
+    <li><a href="#verify">Verification checklist</a></li>
+    <li><a href="#next">What's next</a></li>
+  </ol>
+</nav>
+
+<!-- =================================================== -->
+<section id="why">
+<h2>1. Why tensors</h2>
+
+<p>Module 1's scalar autodiff is correct — it trains <code>xor</code>
+end-to-end. But every weight is its own NodeId. A <code>Linear(2, 4)</code>
+layer has 12 parameters and produces 4 outputs from 2 inputs, which means
+roughly <em>20 graph nodes per sample</em> just for that one layer. Scaling
+to a 28×28 MNIST image with a 784→128 layer would build ~100,000 nodes
+per sample, and the graph traversal cost dominates everything.</p>
+
+<p>It's also painfully verbose at the call site. Here's the actual
+<code>Linear.forward</code> from module 1:</p>
+
+<div class="side-by-side">
+  <div>
+    <h4>Scalar Linear.forward (~50 lines)</h4>
+<pre><code><span class="kw">pub fn</span> <span class="fn">forward</span>(
+    &amp;<span class="kw">mut</span> <span class="kw">self</span>,
+    graph: &amp;<span class="kw">mut</span> <span class="ty">ScalarGraph</span>,
+    in_ids: <span class="ty">Vec</span>&lt;<span class="ty">NodeId</span>&gt;,
+) -&gt; <span class="ty">Vec</span>&lt;<span class="ty">NodeId</span>&gt; {
+    <span class="kw">let</span> weight_ids: <span class="ty">Vec</span>&lt;<span class="ty">Vec</span>&lt;<span class="ty">NodeId</span>&gt;&gt; = <span class="kw">self</span>.weights.iter()
+        .map(|row| row.iter().map(|w| graph.add_leaf(*w)).collect())
+        .collect();
+    <span class="kw">let</span> bias_ids: <span class="ty">Vec</span>&lt;<span class="ty">NodeId</span>&gt; = <span class="kw">self</span>.biases.iter()
+        .map(|b| graph.add_leaf(*b)).collect();
+
+    <span class="kw">let mut</span> output_ids = <span class="kw">vec</span>![<span class="ty">NodeId</span>(<span class="num">0</span>); <span class="kw">self</span>.biases.len()];
+    <span class="kw">for</span> i <span class="kw">in</span> <span class="num">0</span>..<span class="kw">self</span>.biases.len() {
+        <span class="kw">let mut</span> acc_id = graph.apply(
+            <span class="ty">ScalarOp</span>::Mul(graph.get_node(in_ids[<span class="num">0</span>]).out,
+                          <span class="kw">self</span>.weights[i][<span class="num">0</span>]),
+            <span class="kw">vec</span>![in_ids[<span class="num">0</span>], weight_ids[i][<span class="num">0</span>]],
+        );
+        <span class="kw">for</span> (j, w) <span class="kw">in</span> <span class="kw">self</span>.weights[i].iter()
+                          .enumerate().skip(<span class="num">1</span>) {
+            <span class="kw">let</span> prod = graph.apply(
+                <span class="ty">ScalarOp</span>::Mul(graph.get_node(in_ids[j]).out, *w),
+                <span class="kw">vec</span>![in_ids[j], weight_ids[i][j]],
+            );
+            acc_id = graph.apply(
+                <span class="ty">ScalarOp</span>::Add(graph.get_node(acc_id).out,
+                              graph.get_node(prod).out),
+                <span class="kw">vec</span>![acc_id, prod],
+            );
+        }
+        acc_id = graph.apply(
+            <span class="ty">ScalarOp</span>::Add(graph.get_node(acc_id).out, <span class="kw">self</span>.biases[i]),
+            <span class="kw">vec</span>![acc_id, bias_ids[i]],
+        );
+        output_ids[i] = acc_id;
+    }
+    <span class="kw">self</span>.weight_ids = <span class="ty">Some</span>(weight_ids);
+    <span class="kw">self</span>.bias_ids = <span class="ty">Some</span>(bias_ids);
+    output_ids
+}</code></pre>
+  </div>
+  <div>
+    <h4>Tensor Linear.forward (the goal)</h4>
+<pre><code><span class="kw">pub fn</span> <span class="fn">forward</span>(&amp;<span class="kw">self</span>, x: &amp;<span class="ty">Tensor</span>) -&gt; <span class="ty">Tensor</span> {
+    x.matmul(&amp;<span class="kw">self</span>.weights) + &amp;<span class="kw">self</span>.biases
+}
+
+
+
+
+
+
+<span class="cmt">// that's the whole function body.</span>
+<span class="cmt">// no &amp;mut graph parameter.</span>
+<span class="cmt">// no NodeId bookkeeping.</span>
+<span class="cmt">// no manual fan-out loops.</span>
+<span class="cmt">// the graph is hidden inside Tensor.</span>
+<span class="cmt">//</span>
+<span class="cmt">// matmul is one op, not (in_size * out_size) Muls + Adds.</span>
+<span class="cmt">// the gradient through matmul</span>
+<span class="cmt">// is also one op (the transpose-matmul rule).</span>
+<span class="cmt">// the graph has O(layers) nodes,</span>
+<span class="cmt">// not O(params).</span>
+<span class="cmt">//</span>
+<span class="cmt">// this is what module 2 buys you.</span>
+
+
+
+
+</code></pre>
+  </div>
+</div>
+
+<p>Module 2 builds the machinery to make the right-hand version possible:
+a multi-dimensional <code>Tensor</code> type with strided storage,
+broadcasting, an autograd graph that records ops on tensors instead of
+scalars, and operator overloading so call sites read like math.</p>
+
+<p>What we're <em>not</em> doing yet: rayon parallelism (module 7), GPU
+(module 8), or replacing our hand-rolled storage with <code>ndarray</code>
+(deferred to a future <code>FastOps</code> backend). Single-threaded CPU
+with <code>Vec&lt;f64&gt;</code> for now. The trait-based backend abstraction
+we set up here is what lets all of that drop in later without rewriting
+<code>Linear</code> / <code>Network</code> / <code>loss</code> /
+<code>train</code>.</p>
+</section>
+
+<!-- =================================================== -->
+<section id="tensor-data">
+<h2>2. TensorData layout</h2>
+
+<p>A tensor is conceptually a multi-dimensional array. Memory is
+one-dimensional. The bridge is <em>strides</em>: a per-dim multiplier that
+maps a logical index <code>[i, j, k, ...]</code> to a flat offset:</p>
+
+<pre><code>flat_offset = i * strides[0] + j * strides[1] + k * strides[2] + ...</code></pre>
+
+<p>For a contiguous <code>(3, 4)</code> tensor laid out row-major, the
+strides are <code>[4, 1]</code> — moving one step in the row dim advances
+4 elements in storage, moving one step in the column dim advances 1.</p>
+
+<div class="figure">
+<svg viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .lbl { fill: #d4d4d4; font-family: monospace; font-size: 11px; }
+    .lbl-small { fill: #888; font-family: monospace; font-size: 10px; }
+    .header { fill: #61afef; font-family: monospace; font-size: 12px; font-weight: bold; }
+    .cell { fill: #2d2d2d; stroke: #555; stroke-width: 1; }
+    .cell-accent { fill: #1d3a4f; stroke: #61afef; stroke-width: 1.5; }
+    .arrow { stroke: #555; stroke-width: 1; fill: none; }
+    .arrow-accent { stroke: #61afef; stroke-width: 1.5; fill: none; }
+  </style>
+
+  <!-- Logical 2D view -->
+  <text x="100" y="20" class="header">Logical view: shape=[3, 4]</text>
+  <text x="40" y="50" class="lbl-small">col 0</text>
+  <text x="90" y="50" class="lbl-small">col 1</text>
+  <text x="140" y="50" class="lbl-small">col 2</text>
+  <text x="190" y="50" class="lbl-small">col 3</text>
+  <text x="10" y="78" class="lbl-small">r0</text>
+  <text x="10" y="118" class="lbl-small">r1</text>
+  <text x="10" y="158" class="lbl-small">r2</text>
+
+  <g transform="translate(30, 60)">
+    <!-- row 0 -->
+    <rect x="0" y="0" width="40" height="30" class="cell-accent" rx="2"/>
+    <text x="20" y="20" text-anchor="middle" class="lbl">T[0,0]</text>
+    <rect x="50" y="0" width="40" height="30" class="cell" rx="2"/>
+    <text x="70" y="20" text-anchor="middle" class="lbl">T[0,1]</text>
+    <rect x="100" y="0" width="40" height="30" class="cell" rx="2"/>
+    <text x="120" y="20" text-anchor="middle" class="lbl">T[0,2]</text>
+    <rect x="150" y="0" width="40" height="30" class="cell" rx="2"/>
+    <text x="170" y="20" text-anchor="middle" class="lbl">T[0,3]</text>
+    <!-- row 1 -->
+    <rect x="0" y="40" width="40" height="30" class="cell" rx="2"/>
+    <text x="20" y="60" text-anchor="middle" class="lbl">T[1,0]</text>
+    <rect x="50" y="40" width="40" height="30" class="cell" rx="2"/>
+    <text x="70" y="60" text-anchor="middle" class="lbl">T[1,1]</text>
+    <rect x="100" y="40" width="40" height="30" class="cell-accent" rx="2"/>
+    <text x="120" y="60" text-anchor="middle" class="lbl">T[1,2]</text>
+    <rect x="150" y="40" width="40" height="30" class="cell" rx="2"/>
+    <text x="170" y="60" text-anchor="middle" class="lbl">T[1,3]</text>
+    <!-- row 2 -->
+    <rect x="0" y="80" width="40" height="30" class="cell" rx="2"/>
+    <text x="20" y="100" text-anchor="middle" class="lbl">T[2,0]</text>
+    <rect x="50" y="80" width="40" height="30" class="cell" rx="2"/>
+    <text x="70" y="100" text-anchor="middle" class="lbl">T[2,1]</text>
+    <rect x="100" y="80" width="40" height="30" class="cell" rx="2"/>
+    <text x="120" y="100" text-anchor="middle" class="lbl">T[2,2]</text>
+    <rect x="150" y="80" width="40" height="30" class="cell" rx="2"/>
+    <text x="170" y="100" text-anchor="middle" class="lbl">T[2,3]</text>
+  </g>
+
+  <!-- Flat storage view -->
+  <text x="450" y="20" class="header">Storage: Vec&lt;f64&gt; (length 12)</text>
+  <g transform="translate(310, 200)">
+    <rect x="0"   y="0" width="30" height="30" class="cell-accent" rx="2"/>
+    <text x="15"  y="20" text-anchor="middle" class="lbl">s0</text>
+    <rect x="32"  y="0" width="30" height="30" class="cell" rx="2"/>
+    <text x="47"  y="20" text-anchor="middle" class="lbl">s1</text>
+    <rect x="64"  y="0" width="30" height="30" class="cell" rx="2"/>
+    <text x="79"  y="20" text-anchor="middle" class="lbl">s2</text>
+    <rect x="96"  y="0" width="30" height="30" class="cell" rx="2"/>
+    <text x="111" y="20" text-anchor="middle" class="lbl">s3</text>
+    <rect x="128" y="0" width="30" height="30" class="cell" rx="2"/>
+    <text x="143" y="20" text-anchor="middle" class="lbl">s4</text>
+    <rect x="160" y="0" width="30" height="30" class="cell" rx="2"/>
+    <text x="175" y="20" text-anchor="middle" class="lbl">s5</text>
+    <rect x="192" y="0" width="30" height="30" class="cell-accent" rx="2"/>
+    <text x="207" y="20" text-anchor="middle" class="lbl">s6</text>
+    <rect x="224" y="0" width="30" height="30" class="cell" rx="2"/>
+    <text x="239" y="20" text-anchor="middle" class="lbl">s7</text>
+    <rect x="256" y="0" width="30" height="30" class="cell" rx="2"/>
+    <text x="271" y="20" text-anchor="middle" class="lbl">s8</text>
+    <rect x="288" y="0" width="30" height="30" class="cell" rx="2"/>
+    <text x="303" y="20" text-anchor="middle" class="lbl">s9</text>
+    <rect x="320" y="0" width="30" height="30" class="cell" rx="2"/>
+    <text x="335" y="20" text-anchor="middle" class="lbl">s10</text>
+    <rect x="352" y="0" width="30" height="30" class="cell" rx="2"/>
+    <text x="367" y="20" text-anchor="middle" class="lbl">s11</text>
+  </g>
+
+  <!-- Arrows showing two highlighted mappings -->
+  <path d="M 50 90 Q 200 130 325 200" class="arrow-accent"/>
+  <path d="M 150 130 Q 280 170 517 200" class="arrow-accent"/>
+
+  <!-- Metadata -->
+  <g transform="translate(370, 80)">
+    <text x="0" y="0" class="header">strides = [4, 1]</text>
+    <text x="0" y="22" class="lbl">T[0,0] → s[0*4 + 0*1] = s0</text>
+    <text x="0" y="40" class="lbl">T[1,2] → s[1*4 + 2*1] = s6</text>
+    <text x="0" y="58" class="lbl">T[i,j] → s[i*4 + j*1]</text>
+  </g>
+</svg>
+<div class="caption">A <code>(3, 4)</code> tensor with row-major strides <code>[4, 1]</code>. Logical
+2D indices map to a flat <code>Vec&lt;f64&gt;</code> via the dot product
+of index and strides.</div>
+</div>
+
+<p>The struct is small:</p>
+
+<pre><code><span class="kw">pub struct</span> <span class="ty">TensorData</span> {
+    <span class="kw">pub</span> storage: <span class="ty">Vec</span>&lt;<span class="ty">f64</span>&gt;,
+    <span class="kw">pub</span> shape:   <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;,
+    <span class="kw">pub</span> strides: <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;,
+}</code></pre>
+
+<p>The real magic is what stride math enables. Consider <em>transpose</em>:
+in most array libraries, transposing a large tensor would copy data. With
+strides, it's metadata-only:</p>
+
+<div class="figure">
+<svg viewBox="0 0 700 280" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .lbl { fill: #d4d4d4; font-family: monospace; font-size: 11px; }
+    .lbl-small { fill: #888; font-family: monospace; font-size: 10px; }
+    .header { fill: #61afef; font-family: monospace; font-size: 12px; font-weight: bold; }
+    .cell { fill: #2d2d2d; stroke: #555; stroke-width: 1; }
+    .same { fill: #1d3a4f; stroke: #61afef; stroke-width: 1; }
+    .arrow { stroke: #555; stroke-width: 1; fill: none; }
+  </style>
+
+  <!-- Transposed logical view (4 rows, 3 cols) -->
+  <text x="20" y="20" class="header">After transpose: shape=[4, 3]</text>
+  <g transform="translate(30, 35)">
+    <rect x="0"  y="0"  width="40" height="28" class="cell" rx="2"/>
+    <text x="20" y="18" text-anchor="middle" class="lbl">T[0,0]</text>
+    <rect x="50" y="0"  width="40" height="28" class="cell" rx="2"/>
+    <text x="70" y="18" text-anchor="middle" class="lbl">T[0,1]</text>
+    <rect x="100" y="0" width="40" height="28" class="cell" rx="2"/>
+    <text x="120" y="18" text-anchor="middle" class="lbl">T[0,2]</text>
+
+    <rect x="0"  y="32" width="40" height="28" class="cell" rx="2"/>
+    <text x="20" y="50" text-anchor="middle" class="lbl">T[1,0]</text>
+    <rect x="50" y="32" width="40" height="28" class="cell" rx="2"/>
+    <text x="70" y="50" text-anchor="middle" class="lbl">T[1,1]</text>
+    <rect x="100" y="32" width="40" height="28" class="cell" rx="2"/>
+    <text x="120" y="50" text-anchor="middle" class="lbl">T[1,2]</text>
+
+    <rect x="0"  y="64" width="40" height="28" class="cell" rx="2"/>
+    <text x="20" y="82" text-anchor="middle" class="lbl">T[2,0]</text>
+    <rect x="50" y="64" width="40" height="28" class="cell" rx="2"/>
+    <text x="70" y="82" text-anchor="middle" class="lbl">T[2,1]</text>
+    <rect x="100" y="64" width="40" height="28" class="cell" rx="2"/>
+    <text x="120" y="82" text-anchor="middle" class="lbl">T[2,2]</text>
+
+    <rect x="0"  y="96" width="40" height="28" class="cell" rx="2"/>
+    <text x="20" y="114" text-anchor="middle" class="lbl">T[3,0]</text>
+    <rect x="50" y="96" width="40" height="28" class="cell" rx="2"/>
+    <text x="70" y="114" text-anchor="middle" class="lbl">T[3,1]</text>
+    <rect x="100" y="96" width="40" height="28" class="cell" rx="2"/>
+    <text x="120" y="114" text-anchor="middle" class="lbl">T[3,2]</text>
+  </g>
+
+  <!-- Storage unchanged -->
+  <text x="310" y="200" class="header">Storage: UNCHANGED</text>
+  <g transform="translate(310, 220)">
+    <rect x="0" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="15" y="18" text-anchor="middle" class="lbl">s0</text>
+    <rect x="32" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="47" y="18" text-anchor="middle" class="lbl">s1</text>
+    <rect x="64" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="79" y="18" text-anchor="middle" class="lbl">s2</text>
+    <rect x="96" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="111" y="18" text-anchor="middle" class="lbl">s3</text>
+    <rect x="128" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="143" y="18" text-anchor="middle" class="lbl">s4</text>
+    <rect x="160" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="175" y="18" text-anchor="middle" class="lbl">s5</text>
+    <rect x="192" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="207" y="18" text-anchor="middle" class="lbl">s6</text>
+    <rect x="224" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="239" y="18" text-anchor="middle" class="lbl">s7</text>
+    <rect x="256" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="271" y="18" text-anchor="middle" class="lbl">s8</text>
+    <rect x="288" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="303" y="18" text-anchor="middle" class="lbl">s9</text>
+    <rect x="320" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="335" y="18" text-anchor="middle" class="lbl">s10</text>
+    <rect x="352" y="0" width="30" height="28" class="same" rx="2"/>
+    <text x="367" y="18" text-anchor="middle" class="lbl">s11</text>
+  </g>
+
+  <!-- Metadata -->
+  <g transform="translate(220, 60)">
+    <text x="0" y="0" class="header">strides = [1, 4]</text>
+    <text x="0" y="22" class="lbl">T[0,0] → s[0*1 + 0*4] = s0</text>
+    <text x="0" y="40" class="lbl">T[0,1] → s[0*1 + 1*4] = s4</text>
+    <text x="0" y="58" class="lbl">T[0,2] → s[0*1 + 2*4] = s8</text>
+    <text x="0" y="76" class="lbl">T[i,j] → s[i*1 + j*4]</text>
+  </g>
+</svg>
+<div class="caption">Same storage, transposed logical view. Only the
+strides flipped from <code>[4, 1]</code> to <code>[1, 4]</code> — zero
+data copied. This is why <code>x.t()</code> in PyTorch is O(1).</div>
+</div>
+
+<p>The same principle gives us <em>views</em> (slicing without copying),
+<em>reshape</em> (also free for contiguous tensors), and
+<em>broadcasting</em> (which we'll cover in section 3).</p>
+
+<h3 id="t21">Task 2.1 — Implement <code>TensorData</code></h3>
+<p class="file-tag">src/tensor_data.rs</p>
+
+<p><strong>What to implement:</strong></p>
+
+<pre><code><span class="kw">impl</span> <span class="ty">TensorData</span> {
+    <span class="kw">pub fn</span> <span class="fn">new</span>(storage: <span class="ty">Vec</span>&lt;<span class="ty">f64</span>&gt;, shape: <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;) -&gt; <span class="ty">Self</span>;
+
+    <span class="kw">pub fn</span> <span class="fn">zeros</span>(shape: <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;) -&gt; <span class="ty">Self</span>;
+    <span class="kw">pub fn</span> <span class="fn">ones</span>(shape: <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;) -&gt; <span class="ty">Self</span>;
+
+    <span class="cmt">/// Logical index → flat storage offset using strides.</span>
+    <span class="kw">pub fn</span> <span class="fn">flat_index</span>(&amp;<span class="kw">self</span>, idx: &amp;[<span class="ty">usize</span>]) -&gt; <span class="ty">usize</span>;
+
+    <span class="kw">pub fn</span> <span class="fn">get</span>(&amp;<span class="kw">self</span>, idx: &amp;[<span class="ty">usize</span>]) -&gt; <span class="ty">f64</span>;
+    <span class="kw">pub fn</span> <span class="fn">set</span>(&amp;<span class="kw">mut</span> <span class="kw">self</span>, idx: &amp;[<span class="ty">usize</span>], val: <span class="ty">f64</span>);
+
+    <span class="kw">pub fn</span> <span class="fn">size</span>(&amp;<span class="kw">self</span>) -&gt; <span class="ty">usize</span>; <span class="cmt">// product of shape</span>
+    <span class="kw">pub fn</span> <span class="fn">ndim</span>(&amp;<span class="kw">self</span>) -&gt; <span class="ty">usize</span>; <span class="cmt">// shape.len()</span>
+
+    <span class="cmt">/// New TensorData with axes permuted. Storage unchanged.</span>
+    <span class="kw">pub fn</span> <span class="fn">permute</span>(&amp;<span class="kw">self</span>, axes: &amp;[<span class="ty">usize</span>]) -&gt; <span class="ty">Self</span>;
+
+    <span class="cmt">/// Iterator over all logical indices in row-major order.</span>
+    <span class="kw">pub fn</span> <span class="fn">iter_indices</span>(&amp;<span class="kw">self</span>) -&gt; <span class="kw">impl</span> <span class="ty">Iterator</span>&lt;<span class="ty">Item</span> = <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;&gt;;
+}
+
+<span class="cmt">/// Standard row-major strides for a given shape: stride[i] = product of shape[i+1..]</span>
+<span class="kw">pub fn</span> <span class="fn">contiguous_strides</span>(shape: &amp;[<span class="ty">usize</span>]) -&gt; <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;;</code></pre>
+
+<h4>Rust notes</h4>
+<ul>
+  <li><strong>Slice vs Vec.</strong> Take <code>&amp;[usize]</code> as input
+    for indices (more flexible than <code>Vec&lt;usize&gt;</code> at the API).
+    Return <code>Vec&lt;usize&gt;</code> from <code>iter_indices</code> because
+    each yielded index is its own owned thing.</li>
+  <li><strong><code>permute</code> doesn't move data.</strong> Build new
+    <code>shape</code> and <code>strides</code> by permuting the originals
+    with the given axis order. Share the same <code>storage</code> Vec
+    (you can <code>storage.clone()</code> for simplicity — or use
+    <code>Rc&lt;Vec&lt;f64&gt;&gt;</code> later for true zero-copy views).</li>
+  <li><strong>Don't validate strides at construction time</strong> unless
+    you want to forbid non-contiguous tensors. We <em>do</em> want
+    non-contiguous (transpose, broadcast), so accept any consistent
+    strides.</li>
+  <li><strong><code>flat_index</code> is the hot path.</strong> It's called
+    once per element per op. Resist the urge to add bounds checks beyond
+    what <code>storage[offset]</code> already does via <code>Vec</code>.</li>
+</ul>
+
+<h4>Tests to write (<span class="file-tag">tests/test_tensor_data.rs</span>)</h4>
+<ul>
+  <li><code>new</code> computes correct strides for shapes like
+    <code>[3, 4]</code>, <code>[2, 3, 4]</code>, <code>[5]</code>.</li>
+  <li><code>get</code> / <code>set</code> round-trip for various
+    multi-dim indices.</li>
+  <li><code>permute([1, 0])</code> on a <code>[3, 4]</code> tensor swaps
+    strides; same data accessed differently.</li>
+  <li><code>iter_indices</code> on <code>[2, 3]</code> yields
+    <code>[0,0], [0,1], [0,2], [1,0], [1,1], [1,2]</code> in order.</li>
+  <li><code>size</code> for <code>[2, 3, 4]</code> is 24.</li>
+</ul>
+</section>
+
+<!-- =================================================== -->
+<section id="bcast">
+<h2>3. Indexing &amp; broadcasting</h2>
+
+<p>Broadcasting is what lets <code>tensor_3 + tensor_4x3</code> work
+without manual replication. The rule comes from NumPy:</p>
+
+<ol>
+  <li>Align shapes from the <em>right</em>.</li>
+  <li>Each pair of dims is compatible iff they're equal OR one of them is 1.</li>
+  <li>If one tensor has fewer dims, it gets implicit 1s on the left.</li>
+  <li>The output shape is the max of each aligned pair.</li>
+</ol>
+
+<table>
+  <thead>
+    <tr>
+      <th>a.shape</th>
+      <th>b.shape</th>
+      <th>result.shape</th>
+      <th>compatible?</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr><td><code>[3]</code></td><td><code>[4, 3]</code></td><td><code>[4, 3]</code></td><td>yes</td></tr>
+    <tr><td><code>[4, 1]</code></td><td><code>[1, 3]</code></td><td><code>[4, 3]</code></td><td>yes</td></tr>
+    <tr><td><code>[2, 3]</code></td><td><code>[3]</code></td><td><code>[2, 3]</code></td><td>yes</td></tr>
+    <tr><td><code>[4]</code></td><td><code>[3]</code></td><td>—</td><td>no</td></tr>
+    <tr><td><code>[2, 4]</code></td><td><code>[3, 4]</code></td><td>—</td><td>no</td></tr>
+  </tbody>
+</table>
+
+<p>The trick: instead of physically replicating the smaller tensor,
+we set its stride to <strong>0</strong> on the dim being broadcast.
+A stride of 0 means "no matter how this index advances, stay on the
+same element."</p>
+
+<div class="figure">
+<svg viewBox="0 0 700 320" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .lbl { fill: #d4d4d4; font-family: monospace; font-size: 11px; }
+    .lbl-small { fill: #888; font-family: monospace; font-size: 10px; }
+    .header { fill: #61afef; font-family: monospace; font-size: 12px; font-weight: bold; }
+    .cell { fill: #2d2d2d; stroke: #555; stroke-width: 1; }
+    .acc { fill: #1d3a4f; stroke: #61afef; stroke-width: 1; }
+    .warn { fill: #3a2d1d; stroke: #e5c07b; stroke-width: 1; }
+  </style>
+
+  <text x="20" y="20" class="header">a: shape=[3], strides=[1]</text>
+  <g transform="translate(20, 30)">
+    <rect x="0"  y="0" width="40" height="28" class="acc" rx="2"/>
+    <text x="20" y="18" text-anchor="middle" class="lbl">10</text>
+    <rect x="50" y="0" width="40" height="28" class="acc" rx="2"/>
+    <text x="70" y="18" text-anchor="middle" class="lbl">20</text>
+    <rect x="100" y="0" width="40" height="28" class="acc" rx="2"/>
+    <text x="120" y="18" text-anchor="middle" class="lbl">30</text>
+  </g>
+
+  <text x="240" y="20" class="header">"virtually" becomes [4, 3] with strides=[0, 1]</text>
+  <g transform="translate(240, 30)">
+    <rect x="0" y="0" width="40" height="28" class="acc" rx="2"/>
+    <text x="20" y="18" text-anchor="middle" class="lbl">10</text>
+    <rect x="50" y="0" width="40" height="28" class="acc" rx="2"/>
+    <text x="70" y="18" text-anchor="middle" class="lbl">20</text>
+    <rect x="100" y="0" width="40" height="28" class="acc" rx="2"/>
+    <text x="120" y="18" text-anchor="middle" class="lbl">30</text>
+
+    <rect x="0" y="32" width="40" height="28" class="acc" rx="2"/>
+    <text x="20" y="50" text-anchor="middle" class="lbl">10</text>
+    <rect x="50" y="32" width="40" height="28" class="acc" rx="2"/>
+    <text x="70" y="50" text-anchor="middle" class="lbl">20</text>
+    <rect x="100" y="32" width="40" height="28" class="acc" rx="2"/>
+    <text x="120" y="50" text-anchor="middle" class="lbl">30</text>
+
+    <rect x="0" y="64" width="40" height="28" class="acc" rx="2"/>
+    <text x="20" y="82" text-anchor="middle" class="lbl">10</text>
+    <rect x="50" y="64" width="40" height="28" class="acc" rx="2"/>
+    <text x="70" y="82" text-anchor="middle" class="lbl">20</text>
+    <rect x="100" y="64" width="40" height="28" class="acc" rx="2"/>
+    <text x="120" y="82" text-anchor="middle" class="lbl">30</text>
+
+    <rect x="0" y="96" width="40" height="28" class="acc" rx="2"/>
+    <text x="20" y="114" text-anchor="middle" class="lbl">10</text>
+    <rect x="50" y="96" width="40" height="28" class="acc" rx="2"/>
+    <text x="70" y="114" text-anchor="middle" class="lbl">20</text>
+    <rect x="100" y="96" width="40" height="28" class="acc" rx="2"/>
+    <text x="120" y="114" text-anchor="middle" class="lbl">30</text>
+  </g>
+
+  <g transform="translate(420, 60)">
+    <text x="0" y="0" class="header">storage is still 3 elements</text>
+    <text x="0" y="22" class="lbl">a[i,j] → storage[i*0 + j*1]</text>
+    <text x="0" y="40" class="lbl">      = storage[j]</text>
+    <text x="0" y="64" class="lbl-small">stride 0 → row index is ignored</text>
+    <text x="0" y="80" class="lbl-small">→ same 3 elements seen 4 times</text>
+    <text x="0" y="96" class="lbl-small">→ ZERO memory copied</text>
+  </g>
+
+  <text x="20" y="200" class="header">b: shape=[4, 3], strides=[3, 1]</text>
+  <g transform="translate(20, 210)">
+    <rect x="0"   y="0" width="30" height="24" class="cell" rx="2"/>
+    <text x="15"  y="16" text-anchor="middle" class="lbl">1</text>
+    <rect x="32"  y="0" width="30" height="24" class="cell" rx="2"/>
+    <text x="47"  y="16" text-anchor="middle" class="lbl">2</text>
+    <rect x="64"  y="0" width="30" height="24" class="cell" rx="2"/>
+    <text x="79"  y="16" text-anchor="middle" class="lbl">3</text>
+
+    <rect x="0"   y="28" width="30" height="24" class="cell" rx="2"/>
+    <text x="15"  y="44" text-anchor="middle" class="lbl">4</text>
+    <rect x="32"  y="28" width="30" height="24" class="cell" rx="2"/>
+    <text x="47"  y="44" text-anchor="middle" class="lbl">5</text>
+    <rect x="64"  y="28" width="30" height="24" class="cell" rx="2"/>
+    <text x="79"  y="44" text-anchor="middle" class="lbl">6</text>
+
+    <rect x="0"   y="56" width="30" height="24" class="cell" rx="2"/>
+    <text x="15"  y="72" text-anchor="middle" class="lbl">7</text>
+    <rect x="32"  y="56" width="30" height="24" class="cell" rx="2"/>
+    <text x="47"  y="72" text-anchor="middle" class="lbl">8</text>
+    <rect x="64"  y="56" width="30" height="24" class="cell" rx="2"/>
+    <text x="79"  y="72" text-anchor="middle" class="lbl">9</text>
+
+    <rect x="0"   y="84" width="30" height="24" class="cell" rx="2"/>
+    <text x="15"  y="100" text-anchor="middle" class="lbl">10</text>
+    <rect x="32"  y="84" width="30" height="24" class="cell" rx="2"/>
+    <text x="47"  y="100" text-anchor="middle" class="lbl">11</text>
+    <rect x="64"  y="84" width="30" height="24" class="cell" rx="2"/>
+    <text x="79"  y="100" text-anchor="middle" class="lbl">12</text>
+  </g>
+
+  <text x="220" y="200" class="header">a + b: shape=[4, 3]</text>
+  <g transform="translate(220, 210)">
+    <rect x="0"   y="0" width="35" height="24" class="warn" rx="2"/>
+    <text x="17"  y="16" text-anchor="middle" class="lbl">11</text>
+    <rect x="37"  y="0" width="35" height="24" class="warn" rx="2"/>
+    <text x="54"  y="16" text-anchor="middle" class="lbl">22</text>
+    <rect x="74"  y="0" width="35" height="24" class="warn" rx="2"/>
+    <text x="91"  y="16" text-anchor="middle" class="lbl">33</text>
+
+    <rect x="0"   y="28" width="35" height="24" class="warn" rx="2"/>
+    <text x="17"  y="44" text-anchor="middle" class="lbl">14</text>
+    <rect x="37"  y="28" width="35" height="24" class="warn" rx="2"/>
+    <text x="54"  y="44" text-anchor="middle" class="lbl">25</text>
+    <rect x="74"  y="28" width="35" height="24" class="warn" rx="2"/>
+    <text x="91"  y="44" text-anchor="middle" class="lbl">36</text>
+
+    <rect x="0"   y="56" width="35" height="24" class="warn" rx="2"/>
+    <text x="17"  y="72" text-anchor="middle" class="lbl">17</text>
+    <rect x="37"  y="56" width="35" height="24" class="warn" rx="2"/>
+    <text x="54"  y="72" text-anchor="middle" class="lbl">28</text>
+    <rect x="74"  y="56" width="35" height="24" class="warn" rx="2"/>
+    <text x="91"  y="72" text-anchor="middle" class="lbl">39</text>
+
+    <rect x="0"   y="84" width="35" height="24" class="warn" rx="2"/>
+    <text x="17"  y="100" text-anchor="middle" class="lbl">20</text>
+    <rect x="37"  y="84" width="35" height="24" class="warn" rx="2"/>
+    <text x="54"  y="100" text-anchor="middle" class="lbl">31</text>
+    <rect x="74"  y="84" width="35" height="24" class="warn" rx="2"/>
+    <text x="91"  y="100" text-anchor="middle" class="lbl">42</text>
+  </g>
+</svg>
+<div class="caption">Broadcasting <code>a + b</code> where <code>a</code>
+has shape <code>(3,)</code> and <code>b</code> has shape <code>(4, 3)</code>.
+<code>a</code>'s stride for the new leading dim is 0, so iterating the
+output's rows reuses the same 3-element storage four times.</div>
+</div>
+
+<p>Implementation-wise, broadcasting is a function from <code>(shape_a,
+shape_b) → (shape_out, strides_a_broadcast, strides_b_broadcast)</code>.
+The original storages aren't touched. The element-wise zip just walks
+both with their broadcast strides.</p>
+
+<h3 id="t22">Task 2.2 — TensorOps and SimpleOps</h3>
+<p class="file-tag">src/tensor_ops.rs</p>
+
+<p>This is the trait that abstracts "how to actually do tensor work." A
+single trait lets you swap in <code>SimpleOps</code> (this module),
+<code>FastOps</code> (rayon-parallel, module 7), <code>GpuOps</code>
+(wgpu, module 8), and eventually <code>CudaOps</code> — all without
+rewriting <code>Linear</code> or the loss functions.</p>
+
+<pre><code><span class="kw">pub trait</span> <span class="ty">TensorBackend</span> {
+    <span class="cmt">/// Apply a unary function element-wise.</span>
+    <span class="kw">fn</span> <span class="fn">map</span>(input: &amp;<span class="ty">TensorData</span>, f: <span class="kw">impl</span> <span class="ty">Fn</span>(<span class="ty">f64</span>) -&gt; <span class="ty">f64</span>) -&gt; <span class="ty">TensorData</span>;
+
+    <span class="cmt">/// Apply a binary function element-wise with broadcasting.</span>
+    <span class="kw">fn</span> <span class="fn">zip</span>(
+        a: &amp;<span class="ty">TensorData</span>,
+        b: &amp;<span class="ty">TensorData</span>,
+        f: <span class="kw">impl</span> <span class="ty">Fn</span>(<span class="ty">f64</span>, <span class="ty">f64</span>) -&gt; <span class="ty">f64</span>,
+    ) -&gt; <span class="ty">TensorData</span>;
+
+    <span class="cmt">/// Reduce along a single dim with a binary op + identity element.</span>
+    <span class="kw">fn</span> <span class="fn">reduce</span>(
+        input: &amp;<span class="ty">TensorData</span>,
+        f: <span class="kw">impl</span> <span class="ty">Fn</span>(<span class="ty">f64</span>, <span class="ty">f64</span>) -&gt; <span class="ty">f64</span>,
+        init: <span class="ty">f64</span>,
+        dim: <span class="ty">usize</span>,
+    ) -&gt; <span class="ty">TensorData</span>;
+
+    <span class="cmt">/// 2D matrix multiply (or batched). Output shape per matmul rules.</span>
+    <span class="kw">fn</span> <span class="fn">matmul</span>(a: &amp;<span class="ty">TensorData</span>, b: &amp;<span class="ty">TensorData</span>) -&gt; <span class="ty">TensorData</span>;
+}
+
+<span class="kw">pub struct</span> <span class="ty">SimpleOps</span>;
+<span class="kw">impl</span> <span class="ty">TensorBackend</span> <span class="kw">for</span> <span class="ty">SimpleOps</span> { <span class="cmt">/* ... */</span> }</code></pre>
+
+<p>Three primitives — <code>map</code>, <code>zip</code>,
+<code>reduce</code> — plus <code>matmul</code> cover the entire surface
+of element-wise tensor math. Sigmoid is <code>map(sigmoid)</code>.
+Add is <code>zip(|a, b| a + b)</code>. Sum-along-dim is
+<code>reduce(|a, b| a + b, 0.0, dim)</code>. Matmul is its own special
+case because it's not element-wise.</p>
+
+<h4>Rust notes</h4>
+<ul>
+  <li><strong>Using <code>impl Fn</code> instead of <code>fn</code> pointer.</strong>
+    <code>impl Fn(f64) -&gt; f64</code> lets callers pass closures with
+    captured state (rare but useful) and the compiler can monomorphize
+    + inline.</li>
+  <li><strong><code>matmul</code> is naive for now.</strong> Three nested
+    loops using <code>flat_index</code>. Don't use BLAS or simd. We're
+    not optimizing — the trait abstraction is what lets module 7 do that
+    later without touching this code.</li>
+  <li><strong>Static dispatch on the backend.</strong> Make <code>Tensor</code>
+    generic over the backend (<code>Tensor&lt;B: TensorBackend&gt;</code>)
+    OR pick one at compile time via a type alias. Generic is more flexible;
+    type alias is simpler. Start with the alias; switch to generic if you
+    actually want to support multiple backends at once.</li>
+</ul>
+
+<h4>Tests</h4>
+<ul>
+  <li><code>map(sigmoid)</code> on a small tensor matches per-element
+    sigmoid.</li>
+  <li><code>zip(+)</code> with broadcasting <code>[3] + [4, 3]</code>
+    produces the (4, 3) sum (verify against hand-computed values).</li>
+  <li><code>reduce(+, 0.0, dim=0)</code> on <code>[2, 3]</code> gives
+    <code>[3]</code> column sums.</li>
+  <li><code>matmul</code> of <code>[2, 3] × [3, 4]</code> matches a
+    hand-computed reference. Also test <code>[3, 3] × [3, 1]</code>.</li>
+</ul>
+</section>
+
+<!-- =================================================== -->
+<section id="wrapper">
+<h2>4. Tensor wrapper &amp; autograd graph</h2>
+
+<p>The Tensor type itself is two pieces glued together: a
+<code>TensorData</code> (the numbers) and an optional <code>History</code>
+(the autograd pointer):</p>
+
+<pre><code><span class="kw">pub struct</span> <span class="ty">Tensor</span> {
+    <span class="kw">pub</span> data: <span class="ty">Rc</span>&lt;<span class="ty">TensorData</span>&gt;,
+    <span class="kw">pub</span> history: <span class="ty">Option</span>&lt;<span class="ty">History</span>&gt;,
+}
+
+<span class="kw">pub struct</span> <span class="ty">History</span> {
+    <span class="kw">pub</span> graph: <span class="ty">Rc</span>&lt;<span class="ty">RefCell</span>&lt;<span class="ty">TensorGraph</span>&gt;&gt;,
+    <span class="kw">pub</span> node_id: <span class="ty">TensorNodeId</span>,
+}</code></pre>
+
+<p><code>history = None</code> means "this tensor is not tracking
+gradients" — like a constant input or a sample's target label. Setting
+<code>requires_grad</code> on a leaf creates a <code>History</code> with
+a fresh graph (or attaches to an existing one when combined with other
+tensors).</p>
+
+<p>The <code>TensorGraph</code> itself is an arena, just like
+<code>ScalarGraph</code> was. The key difference: every node's output
+is a <code>TensorData</code>, not a single <code>f64</code>.</p>
+
+<pre><code><span class="kw">pub struct</span> <span class="ty">TensorGraph</span> {
+    <span class="kw">pub</span> nodes: <span class="ty">Vec</span>&lt;<span class="ty">TensorNode</span>&gt;,
+}
+
+<span class="kw">pub struct</span> <span class="ty">TensorNode</span> {
+    <span class="kw">pub</span> op: <span class="ty">TensorOp</span>,
+    <span class="kw">pub</span> out: <span class="ty">Rc</span>&lt;<span class="ty">TensorData</span>&gt;,
+    <span class="kw">pub</span> gradient: <span class="ty">Option</span>&lt;<span class="ty">TensorData</span>&gt;,
+    <span class="kw">pub</span> parents: <span class="ty">Vec</span>&lt;<span class="ty">TensorNodeId</span>&gt;,
+}</code></pre>
+
+<p>The graph sharing is what closes the ergonomics gap. Three Tensors
+participating in <code>let c = &amp;a + &amp;b;</code> all hold an
+<code>Rc</code> clone of the same graph — so the <code>+</code>
+operator overload can reach into the shared graph and add a new node
+without any &amp;mut parameter being threaded through the call:</p>
+
+<div class="figure">
+<svg viewBox="0 0 720 280" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .lbl { fill: #d4d4d4; font-family: monospace; font-size: 11px; }
+    .lbl-small { fill: #888; font-family: monospace; font-size: 10px; }
+    .header { fill: #61afef; font-family: monospace; font-size: 12px; font-weight: bold; }
+    .box { fill: #232323; stroke: #555; stroke-width: 1; }
+    .box-acc { fill: #1d3a4f; stroke: #61afef; stroke-width: 1.5; }
+    .graph { fill: #2d2d2d; stroke: #e5c07b; stroke-width: 1.5; }
+    .arrow { stroke: #888; stroke-width: 1.2; fill: none; marker-end: url(#a); }
+    .arrow-acc { stroke: #61afef; stroke-width: 1.5; fill: none; marker-end: url(#aa); }
+  </style>
+  <defs>
+    <marker id="a" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#888"/>
+    </marker>
+    <marker id="aa" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#61afef"/>
+    </marker>
+  </defs>
+
+  <text x="40" y="20" class="header">a: Tensor</text>
+  <rect x="20" y="30" width="140" height="80" class="box-acc" rx="4"/>
+  <text x="30" y="50" class="lbl">data: Rc&lt;TensorData&gt;</text>
+  <text x="30" y="68" class="lbl">history: Some(History {</text>
+  <text x="40" y="84" class="lbl-small">graph: Rc&lt;...&gt;,</text>
+  <text x="40" y="98" class="lbl-small">node_id: 0,</text>
+  <text x="30" y="108" class="lbl">})</text>
+
+  <text x="220" y="20" class="header">b: Tensor</text>
+  <rect x="200" y="30" width="140" height="80" class="box-acc" rx="4"/>
+  <text x="210" y="50" class="lbl">data: Rc&lt;TensorData&gt;</text>
+  <text x="210" y="68" class="lbl">history: Some(History {</text>
+  <text x="220" y="84" class="lbl-small">graph: Rc&lt;...&gt;,</text>
+  <text x="220" y="98" class="lbl-small">node_id: 1,</text>
+  <text x="210" y="108" class="lbl">})</text>
+
+  <text x="400" y="20" class="header">c = &amp;a + &amp;b</text>
+  <rect x="380" y="30" width="140" height="80" class="box-acc" rx="4"/>
+  <text x="390" y="50" class="lbl">data: Rc&lt;TensorData&gt;</text>
+  <text x="390" y="68" class="lbl">history: Some(History {</text>
+  <text x="400" y="84" class="lbl-small">graph: Rc&lt;...&gt;,</text>
+  <text x="400" y="98" class="lbl-small">node_id: 2,</text>
+  <text x="390" y="108" class="lbl">})</text>
+
+  <!-- Shared graph -->
+  <rect x="180" y="170" width="360" height="90" class="graph" rx="4"/>
+  <text x="200" y="190" class="header">Rc&lt;RefCell&lt;TensorGraph&gt;&gt; (single instance, 3 owners)</text>
+  <text x="200" y="210" class="lbl">nodes[0]: TensorNode { op: Leaf,    out: a_data,  parents: []     }</text>
+  <text x="200" y="226" class="lbl">nodes[1]: TensorNode { op: Leaf,    out: b_data,  parents: []     }</text>
+  <text x="200" y="242" class="lbl">nodes[2]: TensorNode { op: Add,     out: c_data,  parents: [0, 1] }</text>
+
+  <path d="M 90 110 Q 110 140 230 170" class="arrow"/>
+  <path d="M 270 110 Q 280 140 320 170" class="arrow"/>
+  <path d="M 450 110 Q 440 140 410 170" class="arrow"/>
+</svg>
+<div class="caption">Three <code>Tensor</code>s sharing the same
+<code>Rc&lt;RefCell&lt;TensorGraph&gt;&gt;</code>. Each carries its own
+<code>node_id</code> but they all reach the same arena. Refcount = 3.
+When all three go out of scope, the graph drops.</div>
+</div>
+
+<details id="rc">
+<summary>Aside: why <code>Rc&lt;RefCell&lt;&gt;&gt;</code> here is fine
+(and not the anti-pattern it sometimes is)</summary>
+
+<p><code>Rc&lt;RefCell&lt;&gt;&gt;</code> has a reputation as a Rust smell.
+The reputation is half-deserved. Most of the time when you reach for it,
+you're trying to express a Pythonic "everything is a shared, mutable
+reference" world that Rust's borrow checker is specifically built to
+disallow. The right fix is usually <em>not</em> to wrap in
+<code>Rc&lt;RefCell&gt;</code> — it's to restructure ownership (often via
+an arena + indices, exactly what we already did for the scalar graph).</p>
+
+<p>But there's a narrow set of cases where it <strong>is</strong> the
+right tool. The semantics it provides — <em>multiple owners,
+interior mutability, refcounted lifetime</em> — exactly match certain
+real-world data structures. The classic example from the Rust book is
+a graph of nodes that reference each other and need mutation. That's
+literally our case:</p>
+
+<ul>
+  <li><strong>Shared ownership.</strong> Many <code>Tensor</code>s point
+    at the same <code>TensorGraph</code>. The graph's lifetime is "until
+    the last referencing Tensor is dropped." That's refcount semantics.</li>
+  <li><strong>Interior mutability.</strong> The graph grows as ops run.
+    We need to mutate it through a shared reference, not an exclusive one
+    (otherwise the operator overload can't take <code>&amp;self</code>).</li>
+  <li><strong>No alternative is cleaner.</strong> Bare arena + explicit
+    <code>&amp;mut graph</code> brings back the scalar-API pain we're
+    fixing. <code>unsafe</code> raw pointers manually reimplement
+    refcounting badly. Thread-local current-graph breaks test isolation
+    and has init-order issues.</li>
+</ul>
+
+<p><strong>Real costs (in concrete numbers):</strong></p>
+<ul>
+  <li><strong>Refcount.</strong> One atomic-free integer
+    increment/decrement per <code>clone()</code>. ~1 ns. Negligible
+    versus the cost of even the cheapest tensor op.</li>
+  <li><strong>RefCell borrow check.</strong> One integer comparison per
+    <code>borrow()</code> or <code>borrow_mut()</code>. ~1 ns. Same
+    story.</li>
+  <li><strong>Panic risk.</strong> <code>borrow_mut</code> panics if a
+    borrow is already held. Mitigated by scoping the
+    <code>borrow_mut</code> tight — usually a 1–3 line block inside the
+    op implementation.</li>
+  <li><strong>Not <code>Send</code>.</strong> <code>Rc</code> isn't
+    thread-safe. If module 7's rayon parallelism needs to share a graph
+    across threads (it shouldn't — each thread can have its own), we'd
+    upgrade to <code>Arc&lt;RwLock&lt;&gt;&gt;</code>. Single-threaded for
+    now is correct.</li>
+</ul>
+
+<p><strong>What we're NOT doing</strong> (the real anti-patterns):</p>
+<ul>
+  <li>Wrapping every struct field in <code>Rc&lt;RefCell&gt;</code>
+    "just in case" — only the autograd graph.</li>
+  <li>Using it to avoid learning lifetimes — we already used a clean
+    arena pattern for scalars; we know the alternative.</li>
+  <li>Sharing primitives that should just be <code>Copy</code>.</li>
+  <li>Hiding all mutation behind it instead of using <code>&amp;mut self</code>
+    where natural — <code>TensorData</code> stays plain.</li>
+</ul>
+
+<p><strong>Upgrade path if it ever becomes a bottleneck:</strong> the
+standard refactor is a "with-graph" closure pattern that scopes
+<code>borrow_mut</code> to a single op call site:</p>
+
+<pre><code><span class="kw">fn</span> <span class="fn">with_graph</span>&lt;<span class="ty">R</span>&gt;(&amp;<span class="kw">self</span>, f: <span class="kw">impl</span> <span class="ty">FnOnce</span>(&amp;<span class="kw">mut</span> <span class="ty">TensorGraph</span>) -&gt; <span class="ty">R</span>) -&gt; <span class="ty">R</span> {
+    f(&amp;<span class="kw">mut</span> <span class="kw">self</span>.graph.borrow_mut())
+}</code></pre>
+
+<p>That keeps the <code>Rc&lt;RefCell&gt;</code> for sharing but minimizes
+borrow scopes. We won't need it at module 2 scale; flag it if profiling
+ever calls for it.</p>
+
+<p>Bottom line: add a <code>///</code> comment on the <code>History</code>
+struct saying "this is the deliberate shared-mutable-graph pattern, not
+a borrow-checker workaround." Then anyone who greps for
+<code>RefCell</code> in the codebase reads that note and knows it's
+intentional.</p>
+</details>
+
+<h3 id="t23">Task 2.3 — Tensor + TensorGraph + TensorOp enum</h3>
+<p class="file-tag">src/tensor.rs and src/tensor_autodiff.rs</p>
+
+<p><strong>What to implement:</strong></p>
+
+<pre><code><span class="cmt">// src/tensor_autodiff.rs</span>
+
+<span class="kw">pub struct</span> <span class="ty">TensorNodeId</span>(<span class="kw">pub</span> <span class="ty">usize</span>);
+
+<span class="kw">pub enum</span> <span class="ty">TensorOp</span> {
+    <span class="ty">Leaf</span>,
+    <span class="ty">Add</span>,
+    <span class="ty">Mul</span>,
+    <span class="ty">Neg</span>,
+    <span class="ty">Sigmoid</span>,
+    <span class="ty">ReLU</span>,
+    <span class="ty">Log</span>,
+    <span class="ty">Exp</span>,
+    <span class="ty">Sum</span>      { dim: <span class="ty">usize</span>, orig_shape: <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt; },
+    <span class="ty">View</span>     { orig_shape: <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt; },
+    <span class="ty">Permute</span>  { axes: <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt; },
+    <span class="ty">MatMul</span>,
+    <span class="ty">Broadcast</span>{ orig_shape: <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt; },
+}
+
+<span class="kw">impl</span> <span class="ty">TensorGraph</span> {
+    <span class="kw">pub fn</span> <span class="fn">new</span>() -&gt; <span class="ty">Self</span>;
+    <span class="kw">pub fn</span> <span class="fn">add_leaf</span>(&amp;<span class="kw">mut</span> <span class="kw">self</span>, data: <span class="ty">Rc</span>&lt;<span class="ty">TensorData</span>&gt;) -&gt; <span class="ty">TensorNodeId</span>;
+    <span class="kw">pub fn</span> <span class="fn">apply</span>(
+        &amp;<span class="kw">mut</span> <span class="kw">self</span>,
+        op: <span class="ty">TensorOp</span>,
+        out: <span class="ty">Rc</span>&lt;<span class="ty">TensorData</span>&gt;,
+        parents: <span class="ty">Vec</span>&lt;<span class="ty">TensorNodeId</span>&gt;,
+    ) -&gt; <span class="ty">TensorNodeId</span>;
+    <span class="kw">pub fn</span> <span class="fn">topological_sort</span>(&amp;<span class="kw">self</span>, root: <span class="ty">TensorNodeId</span>) -&gt; <span class="ty">Vec</span>&lt;<span class="ty">TensorNodeId</span>&gt;;
+}
+
+<span class="cmt">// src/tensor.rs</span>
+
+<span class="kw">impl</span> <span class="ty">Tensor</span> {
+    <span class="kw">pub fn</span> <span class="fn">from_data</span>(data: <span class="ty">TensorData</span>) -&gt; <span class="ty">Self</span>; <span class="cmt">// history = None</span>
+    <span class="kw">pub fn</span> <span class="fn">requires_grad</span>(<span class="kw">self</span>) -&gt; <span class="ty">Self</span>;            <span class="cmt">// attaches new graph + leaf</span>
+
+    <span class="kw">pub fn</span> <span class="fn">shape</span>(&amp;<span class="kw">self</span>) -&gt; &amp;[<span class="ty">usize</span>];
+    <span class="kw">pub fn</span> <span class="fn">ndim</span>(&amp;<span class="kw">self</span>) -&gt; <span class="ty">usize</span>;
+    <span class="kw">pub fn</span> <span class="fn">size</span>(&amp;<span class="kw">self</span>) -&gt; <span class="ty">usize</span>;
+    <span class="kw">pub fn</span> <span class="fn">item</span>(&amp;<span class="kw">self</span>) -&gt; <span class="ty">f64</span>;  <span class="cmt">// only for 0-d / 1-element tensors</span>
+}</code></pre>
+
+<h4>Rust notes</h4>
+<ul>
+  <li><strong>Why <code>Rc&lt;TensorData&gt;</code> for the data field?</strong>
+    So copying a Tensor (e.g., return-by-value from an op) is cheap —
+    no cloning the underlying <code>Vec&lt;f64&gt;</code>. The graph's
+    <code>TensorNode.out</code> and the Tensor's <code>data</code> can
+    point at the same <code>Rc</code>, sharing storage.</li>
+  <li><strong>Scope the borrow_mut.</strong> When applying an op:
+    <code>let id = self.graph.borrow_mut().apply(...);</code> on one
+    line, no longer than that. Don't hold a borrow across other code
+    that might also need the graph.</li>
+  <li><strong>Graph creation rule.</strong> If at least one operand has
+    a <code>history</code>, the output has a history pointing to the same
+    graph. If no operand has a history, the output has no history
+    (constant propagation). Decide this in the op impl, not in the user
+    code.</li>
+  <li><strong><code>requires_grad</code> consumes <code>self</code>.</strong>
+    By taking ownership and returning a new Tensor, you avoid the
+    "is this the same tensor or not?" confusion — the caller's old
+    handle is gone.</li>
+</ul>
+
+<h4>Tests</h4>
+<ul>
+  <li>Construct a Tensor from data, check shape / size / item where
+    applicable.</li>
+  <li><code>requires_grad</code> sets up <code>history</code> with a
+    fresh graph and a leaf node.</li>
+  <li>Two tensors that <em>aren't</em> connected (separate
+    <code>requires_grad</code> calls) have separate graphs — verify by
+    comparing <code>Rc::ptr_eq</code> on the graph handles.</li>
+</ul>
+</section>
+
+<!-- =================================================== -->
+<section id="ops">
+<h2>5. Operator overloading</h2>
+
+<p>This is the moment the API ergonomics flip. Same operation, two
+worlds:</p>
+
+<div class="side-by-side">
+  <div>
+    <h4>Scalar (current)</h4>
+<pre><code><span class="kw">let</span> sum_id = graph.apply(
+    <span class="ty">ScalarOp</span>::Add(
+        graph.get_node(a_id).out,
+        graph.get_node(b_id).out,
+    ),
+    <span class="kw">vec</span>![a_id, b_id],
+);</code></pre>
+  </div>
+  <div>
+    <h4>Tensor (the goal)</h4>
+<pre><code><span class="kw">let</span> c = &amp;a + &amp;b;</code></pre>
+  </div>
+</div>
+
+<p>The implementation pattern for each binary op:</p>
+
+<pre><code><span class="kw">impl</span> <span class="ty">Add</span>&lt;&amp;<span class="ty">Tensor</span>&gt; <span class="kw">for</span> &amp;<span class="ty">Tensor</span> {
+    <span class="kw">type</span> <span class="ty">Output</span> = <span class="ty">Tensor</span>;
+    <span class="kw">fn</span> <span class="fn">add</span>(<span class="kw">self</span>, other: &amp;<span class="ty">Tensor</span>) -&gt; <span class="ty">Tensor</span> {
+        <span class="cmt">// 1. compute output data</span>
+        <span class="kw">let</span> out_data = <span class="ty">SimpleOps</span>::zip(&amp;<span class="kw">self</span>.data, &amp;other.data, |x, y| x + y);
+        <span class="kw">let</span> out_rc = <span class="ty">Rc</span>::new(out_data);
+
+        <span class="cmt">// 2. figure out the graph (None if neither input requires grad)</span>
+        <span class="kw">let</span> history = <span class="kw">match</span> (&amp;<span class="kw">self</span>.history, &amp;other.history) {
+            (<span class="ty">None</span>, <span class="ty">None</span>) =&gt; <span class="ty">None</span>,
+            _ =&gt; {
+                <span class="kw">let</span> graph = pick_shared_graph(&amp;<span class="kw">self</span>.history, &amp;other.history);
+                <span class="kw">let</span> a_id = leaf_id_or_register(&amp;graph, &amp;<span class="kw">self</span>.history, &amp;<span class="kw">self</span>.data);
+                <span class="kw">let</span> b_id = leaf_id_or_register(&amp;graph, &amp;other.history, &amp;other.data);
+                <span class="kw">let</span> node_id = graph.borrow_mut().apply(
+                    <span class="ty">TensorOp</span>::Add, out_rc.clone(), <span class="kw">vec</span>![a_id, b_id],
+                );
+                <span class="ty">Some</span>(<span class="ty">History</span> { graph, node_id })
+            }
+        };
+
+        <span class="ty">Tensor</span> { data: out_rc, history }
+    }
+}</code></pre>
+
+<p>Then add a <code>Tensor + Tensor</code> impl that just forwards to
+<code>&amp;Tensor + &amp;Tensor</code>, and you can write either
+<code>a + b</code> (consumes) or <code>&amp;a + &amp;b</code> (borrows).
+PyTorch lets you do both for the same reason.</p>
+
+<h3 id="t24">Task 2.4 — Implement the ops</h3>
+<p class="file-tag">src/tensor.rs</p>
+
+<p>Each entry below is one op with: the operator/method exposed, the
+forward computation, and the backward (which lands in the graph node
+when <code>backward()</code> walks the topo sort).</p>
+
+<table>
+  <thead>
+    <tr><th>Op</th><th>API surface</th><th>Forward</th><th>Backward</th></tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td><code>Add</code></td>
+      <td><code>&amp;a + &amp;b</code></td>
+      <td><code>zip(a, b, +)</code> with broadcasting</td>
+      <td><code>grad_a += d</code>, <code>grad_b += d</code> (reduce-sum
+        over broadcast dims)</td>
+    </tr>
+    <tr>
+      <td><code>Mul</code></td>
+      <td><code>&amp;a * &amp;b</code></td>
+      <td><code>zip(a, b, *)</code></td>
+      <td><code>grad_a += b * d</code>, <code>grad_b += a * d</code></td>
+    </tr>
+    <tr>
+      <td><code>Neg</code></td>
+      <td><code>-&amp;a</code></td>
+      <td><code>map(a, |x| -x)</code></td>
+      <td><code>grad_a += -d</code></td>
+    </tr>
+    <tr>
+      <td><code>Sigmoid</code></td>
+      <td><code>a.sigmoid()</code></td>
+      <td><code>map(a, sigmoid)</code></td>
+      <td><code>grad_a += out * (1 - out) * d</code></td>
+    </tr>
+    <tr>
+      <td><code>ReLU</code></td>
+      <td><code>a.relu()</code></td>
+      <td><code>map(a, relu)</code></td>
+      <td><code>grad_a += (a &gt; 0 ? d : 0)</code></td>
+    </tr>
+    <tr>
+      <td><code>Log</code></td>
+      <td><code>a.log()</code></td>
+      <td><code>map(a, log)</code></td>
+      <td><code>grad_a += d / (a + EPS)</code> (consistent nudge!)</td>
+    </tr>
+    <tr>
+      <td><code>Exp</code></td>
+      <td><code>a.exp()</code></td>
+      <td><code>map(a, exp)</code></td>
+      <td><code>grad_a += out * d</code></td>
+    </tr>
+    <tr>
+      <td><code>Sum</code></td>
+      <td><code>a.sum(dim)</code></td>
+      <td><code>reduce(a, +, 0, dim)</code></td>
+      <td><code>grad_a += broadcast(d, orig_shape)</code></td>
+    </tr>
+    <tr>
+      <td><code>View</code></td>
+      <td><code>a.view(shape)</code></td>
+      <td>change metadata only</td>
+      <td><code>grad_a += view(d, orig_shape)</code></td>
+    </tr>
+    <tr>
+      <td><code>Permute</code></td>
+      <td><code>a.permute(axes)</code></td>
+      <td>permute strides</td>
+      <td><code>grad_a += permute(d, inverse(axes))</code></td>
+    </tr>
+    <tr>
+      <td><code>MatMul</code></td>
+      <td><code>a.matmul(&amp;b)</code></td>
+      <td><code>matmul(a, b)</code></td>
+      <td><code>grad_a += d @ b.T</code>, <code>grad_b += a.T @ d</code></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout warn">
+<p><strong>Re-learning from module 1:</strong> the <code>log_back</code>
+nudge consistency bit us when training xor — gradients exploded near
+sigmoid saturation. Don't repeat it in <code>Log</code>'s backward.
+Forward and backward must describe the same function.</p>
+</div>
+
+<h4>Three traps worth flagging now</h4>
+
+<details>
+<summary>Matmul backward: why <code>d @ b.T</code> and <code>a.T @ d</code>?</summary>
+<p>For <code>C = A @ B</code> with <code>A: (m, k)</code> and
+<code>B: (k, n)</code>, output <code>C: (m, n)</code>. Pick a single
+element <code>C[i, j] = Σ_k A[i, k] * B[k, j]</code>. Differentiate w.r.t.
+<code>A[i, k]</code>: <code>∂C[i, j]/∂A[i, k] = B[k, j]</code>. So with
+upstream grad <code>d</code> shaped <code>(m, n)</code>:</p>
+<pre><code>grad_A[i, k] = Σ_j d[i, j] * B[k, j] = (d @ B.T)[i, k]</code></pre>
+<p>And symmetrically for <code>B</code>: <code>grad_B = A.T @ d</code>.
+That's the whole derivation. The transpose comes from the dimension
+that gets "summed out" being different on each side.</p>
+</details>
+
+<details>
+<summary>Broadcasting backward: why the reduce-sum?</summary>
+<p>If <code>a: (3,)</code> and <code>b: (4, 3)</code>, then
+<code>c = a + b</code> has shape <code>(4, 3)</code>. The upstream
+gradient <code>d</code> also has shape <code>(4, 3)</code>. But
+<code>a</code>'s gradient must have shape <code>(3,)</code> — same as
+<code>a</code>. Each element of <code>a</code> contributed to 4 rows of
+<code>c</code>, so its gradient is the sum of those 4 rows:</p>
+<pre><code>grad_a = d.sum(dim=0)  // → shape (3,)</code></pre>
+<p>This is why the <code>Broadcast</code> op stores the original shape:
+backward needs to know which dims to sum over.</p>
+</details>
+
+<details>
+<summary>Sum backward: why the broadcast?</summary>
+<p>Exact inverse of broadcast-backward. If <code>c = a.sum(dim=0)</code>
+where <code>a: (4, 3)</code> and <code>c: (3,)</code>, upstream
+<code>d</code> has shape <code>(3,)</code>. Each element of <code>a</code>
+contributed once to the corresponding element of <code>c</code>, so:</p>
+<pre><code>grad_a = broadcast(d, orig_shape=(4, 3))</code></pre>
+<p>Same stride-0 trick we use in the forward broadcast — no actual data
+copying needed for the gradient tensor.</p>
+</details>
+
+<h4>Tests</h4>
+<ul>
+  <li><strong>Forward correctness.</strong> Each op with hand-computed
+    expected outputs on tiny tensors.</li>
+  <li><strong>Backward correctness via central_difference.</strong> Lift
+    the scalar <code>central_difference</code> to tensors — perturb one
+    element of an input at a time, compute (loss(+ε) - loss(-ε)) / 2ε,
+    compare to autograd. <em>This is the load-bearing test</em> — if
+    autograd matches numerical gradient for every op, you're done.</li>
+  <li><strong>Broadcasting gradient.</strong>
+    <code>(a: shape [3]) + (b: shape [4, 3])</code>: verify
+    <code>grad_a</code> is reduced to shape <code>[3]</code>.</li>
+  <li><strong>Matmul gradient.</strong> <code>a: [2, 3]</code>,
+    <code>b: [3, 4]</code>: verify grads against central_difference.</li>
+</ul>
+</section>
+
+<!-- =================================================== -->
+<section id="backward">
+<h2>6. Backward through tensor ops</h2>
+
+<p><code>Tensor::backward()</code> is the same algorithm as the scalar
+version, lifted: topo sort from the loss tensor back to leaves, then
+walk it in reverse, calling each op's backward to deposit gradients on
+parents.</p>
+
+<pre><code><span class="kw">impl</span> <span class="ty">Tensor</span> {
+    <span class="kw">pub fn</span> <span class="fn">backward</span>(&amp;<span class="kw">self</span>) {
+        <span class="kw">let</span> hist = <span class="kw">self</span>.history.as_ref().expect(<span class="str">"backward on a tensor without history"</span>);
+        <span class="kw">let mut</span> graph = hist.graph.borrow_mut();
+        <span class="kw">let</span> order = graph.topological_sort(hist.node_id);
+
+        <span class="cmt">// seed the output gradient as ones</span>
+        graph.nodes[hist.node_id.0].gradient =
+            <span class="ty">Some</span>(<span class="ty">TensorData</span>::ones(<span class="kw">self</span>.shape().to_vec()));
+
+        <span class="kw">for</span> id <span class="kw">in</span> order.iter().rev() {
+            <span class="kw">let</span> grads = graph.compute_backward_for(*id);
+            <span class="kw">for</span> (parent, g) <span class="kw">in</span> grads {
+                accumulate(&amp;<span class="kw">mut</span> graph.nodes[parent.0].gradient, g);
+            }
+        }
+    }
+}</code></pre>
+
+<p>The "seed with ones" matches what we did for scalar (seed with 1.0).
+Same theoretical move: we're computing <code>∂loss/∂x</code> for each
+<code>x</code>, with <code>∂loss/∂loss = 1</code>.</p>
+
+<div class="figure">
+<svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .lbl { fill: #d4d4d4; font-family: monospace; font-size: 11px; }
+    .lbl-small { fill: #888; font-family: monospace; font-size: 10px; }
+    .header { fill: #61afef; font-family: monospace; font-size: 12px; font-weight: bold; }
+    .box { fill: #2d2d2d; stroke: #555; stroke-width: 1; }
+    .leaf { fill: #1d3a4f; stroke: #61afef; stroke-width: 1.5; }
+    .loss { fill: #3a1d1d; stroke: #e06c75; stroke-width: 1.5; }
+    .fwd { stroke: #888; stroke-width: 1.2; fill: none; marker-end: url(#f); }
+    .bwd { stroke: #e06c75; stroke-width: 1.5; fill: none; marker-end: url(#bw); stroke-dasharray: 4 3; }
+  </style>
+  <defs>
+    <marker id="f" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#888"/>
+    </marker>
+    <marker id="bw" markerWidth="8" markerHeight="8" refX="6" refY="4" orient="auto">
+      <path d="M0,0 L8,4 L0,8 z" fill="#e06c75"/>
+    </marker>
+  </defs>
+
+  <text x="10" y="20" class="header">forward (left→right) and backward (right→left, dashed red)</text>
+
+  <rect x="10" y="60" width="60" height="40" class="leaf" rx="4"/>
+  <text x="40" y="78" text-anchor="middle" class="lbl">x</text>
+  <text x="40" y="92" text-anchor="middle" class="lbl-small">(leaf)</text>
+
+  <rect x="10" y="130" width="60" height="40" class="leaf" rx="4"/>
+  <text x="40" y="148" text-anchor="middle" class="lbl">w</text>
+  <text x="40" y="162" text-anchor="middle" class="lbl-small">(leaf)</text>
+
+  <rect x="10" y="200" width="60" height="30" class="leaf" rx="4"/>
+  <text x="40" y="220" text-anchor="middle" class="lbl">b (leaf)</text>
+
+  <rect x="130" y="95" width="80" height="40" class="box" rx="4"/>
+  <text x="170" y="113" text-anchor="middle" class="lbl">x @ w</text>
+  <text x="170" y="128" text-anchor="middle" class="lbl-small">MatMul</text>
+
+  <rect x="260" y="95" width="80" height="40" class="box" rx="4"/>
+  <text x="300" y="113" text-anchor="middle" class="lbl">+ b</text>
+  <text x="300" y="128" text-anchor="middle" class="lbl-small">Add</text>
+
+  <rect x="390" y="95" width="80" height="40" class="box" rx="4"/>
+  <text x="430" y="113" text-anchor="middle" class="lbl">.sigmoid()</text>
+  <text x="430" y="128" text-anchor="middle" class="lbl-small">Sigmoid</text>
+
+  <rect x="520" y="95" width="80" height="40" class="box" rx="4"/>
+  <text x="560" y="113" text-anchor="middle" class="lbl">.bce(t)</text>
+  <text x="560" y="128" text-anchor="middle" class="lbl-small">BCE</text>
+
+  <rect x="630" y="95" width="60" height="40" class="loss" rx="4"/>
+  <text x="660" y="113" text-anchor="middle" class="lbl">loss</text>
+  <text x="660" y="128" text-anchor="middle" class="lbl-small">(scalar)</text>
+
+  <!-- forward arrows -->
+  <path d="M 70 80 Q 100 90 130 110" class="fwd"/>
+  <path d="M 70 150 Q 100 140 130 120" class="fwd"/>
+  <path d="M 210 115 L 260 115" class="fwd"/>
+  <path d="M 70 215 Q 200 200 260 130" class="fwd"/>
+  <path d="M 340 115 L 390 115" class="fwd"/>
+  <path d="M 470 115 L 520 115" class="fwd"/>
+  <path d="M 600 115 L 630 115" class="fwd"/>
+
+  <!-- backward arrows -->
+  <path d="M 625 130 L 605 130" class="bwd"/>
+  <path d="M 515 130 L 475 130" class="bwd"/>
+  <path d="M 385 130 L 345 130" class="bwd"/>
+  <path d="M 255 130 L 215 130" class="bwd"/>
+  <path d="M 130 130 Q 100 150 75 165" class="bwd"/>
+  <path d="M 255 145 Q 200 220 75 225" class="bwd"/>
+  <path d="M 130 100 Q 100 80 75 85" class="bwd"/>
+</svg>
+<div class="caption">Forward (solid) and backward (dashed red) for
+<code>loss = (x @ w + b).sigmoid().bce(t)</code>. Backward traverses
+the same DAG in reverse, applying each op's backward rule to deposit
+gradients on its parents.</div>
+</div>
+
+<p>The only structural difference from scalar backward is that gradients
+themselves are <em>tensors</em> (matching the output shape of each node)
+instead of scalars. Accumulation uses tensor add; the broadcast-backward
+trick (sum over broadcast dims) is what reconciles a downstream gradient
+that's been broadcast back to its original input shape.</p>
+</section>
+
+<!-- =================================================== -->
+<section id="together">
+<h2>7. Putting it together</h2>
+
+<p>Once tensors + autograd are in, every module-1 layer becomes a
+one-liner. Side by side, with the same logical model:</p>
+
+<div class="side-by-side">
+  <div>
+    <h4>Scalar Linear (module 1)</h4>
+<pre><code><span class="kw">pub fn</span> <span class="fn">forward</span>(
+    &amp;<span class="kw">mut</span> <span class="kw">self</span>,
+    graph: &amp;<span class="kw">mut</span> <span class="ty">ScalarGraph</span>,
+    in_ids: <span class="ty">Vec</span>&lt;<span class="ty">NodeId</span>&gt;,
+) -&gt; <span class="ty">Vec</span>&lt;<span class="ty">NodeId</span>&gt; {
+    <span class="cmt">// ~50 lines of:</span>
+    <span class="cmt">// - register weight leaves</span>
+    <span class="cmt">// - register bias leaves</span>
+    <span class="cmt">// - loop over outputs i</span>
+    <span class="cmt">//   - loop over inputs j</span>
+    <span class="cmt">//     - apply Mul</span>
+    <span class="cmt">//     - apply Add to accumulator</span>
+    <span class="cmt">//   - apply Add bias</span>
+    <span class="cmt">// - store leaf ids for step()</span>
+}</code></pre>
+  </div>
+  <div>
+    <h4>Tensor Linear (module 2)</h4>
+<pre><code><span class="kw">pub fn</span> <span class="fn">forward</span>(&amp;<span class="kw">self</span>, x: &amp;<span class="ty">Tensor</span>) -&gt; <span class="ty">Tensor</span> {
+    x.matmul(&amp;<span class="kw">self</span>.weights) + &amp;<span class="kw">self</span>.biases
+}</code></pre>
+  </div>
+</div>
+
+<p>Same for BCE:</p>
+
+<div class="side-by-side">
+  <div>
+    <h4>Scalar BCE</h4>
+<pre><code><span class="cmt">// ~30 lines of explicit</span>
+<span class="cmt">// graph.apply(Neg/Add/Log/Mul...)</span>
+<span class="cmt">// calls building up the formula</span>
+<span class="cmt">// node by node</span></code></pre>
+  </div>
+  <div>
+    <h4>Tensor BCE</h4>
+<pre><code><span class="kw">pub fn</span> <span class="fn">bce</span>(pred: &amp;<span class="ty">Tensor</span>, target: &amp;<span class="ty">Tensor</span>) -&gt; <span class="ty">Tensor</span> {
+    -&amp;(target * &amp;pred.log()
+      + &amp;(<span class="ty">Tensor</span>::ones_like(target) - target)
+        * &amp;(<span class="ty">Tensor</span>::ones_like(pred) - pred).log())
+}</code></pre>
+  </div>
+</div>
+
+<p>(The tensor BCE is still verbose because of the <code>1 - x</code>
+parts. A small <code>tensor.one_minus()</code> helper or
+<code>Sub</code> impl cleans it up further. Style choice.)</p>
+
+<h3 id="t25">Task 2.5 — Rewrite Linear / Network / loss / train using tensors</h3>
+<p class="file-tag">src/tensor_nn.rs, src/tensor_loss.rs, src/tensor_train.rs</p>
+
+<p><strong>Strategy: parallel files, don't overwrite.</strong> Keep the
+scalar versions intact as reference. Build the tensor versions in new
+files so both stacks compile side-by-side, and the comparison-by-diff is
+preserved.</p>
+
+<p><strong>TensorLinear:</strong></p>
+
+<pre><code><span class="kw">pub struct</span> <span class="ty">TensorLinear</span> {
+    <span class="kw">pub</span> weights: <span class="ty">Tensor</span>,  <span class="cmt">// shape: [in_size, out_size], requires_grad</span>
+    <span class="kw">pub</span> biases:  <span class="ty">Tensor</span>,  <span class="cmt">// shape: [out_size], requires_grad, broadcasts on forward</span>
+}
+
+<span class="kw">impl</span> <span class="ty">TensorLinear</span> {
+    <span class="kw">pub fn</span> <span class="fn">new</span>(in_size: <span class="ty">usize</span>, out_size: <span class="ty">usize</span>) -&gt; <span class="ty">Self</span> { <span class="cmt">/* Xavier */</span> }
+    <span class="kw">pub fn</span> <span class="fn">forward</span>(&amp;<span class="kw">self</span>, x: &amp;<span class="ty">Tensor</span>) -&gt; <span class="ty">Tensor</span> {
+        x.matmul(&amp;<span class="kw">self</span>.weights) + &amp;<span class="kw">self</span>.biases
+    }
+}</code></pre>
+
+<p>Notice <code>weights</code> and <code>biases</code> ARE tensors with
+<code>requires_grad</code>, not raw <code>Vec&lt;Vec&lt;f64&gt;&gt;</code>.
+That solves the parameter-vs-NodeId impedance mismatch from module 1
+(no separate <code>weight_ids: Option&lt;Vec&lt;Vec&lt;NodeId&gt;&gt;&gt;</code>
+field needed — the tensor IS the graph node).</p>
+
+<p><strong>The training loop:</strong></p>
+
+<pre><code><span class="kw">for</span> epoch <span class="kw">in</span> <span class="num">0</span>..epochs {
+    <span class="kw">for</span> (x_vec, label) <span class="kw">in</span> shuffled(&amp;dataset) {
+        <span class="kw">let</span> x = <span class="ty">Tensor</span>::from_vec(x_vec, &amp;[<span class="num">1</span>, <span class="num">2</span>]);
+        <span class="kw">let</span> target = <span class="ty">Tensor</span>::from_scalar(label);
+        <span class="kw">let</span> pred = network.forward(&amp;x);
+        <span class="kw">let</span> loss = bce(&amp;pred, &amp;target);
+        loss.backward();
+        network.step(lr);
+    }
+}</code></pre>
+
+<p>No explicit graph anywhere in user code. The graph is created
+on-demand when ops happen, lives across the forward + backward + step,
+and drops when the tensors do. <code>network.step</code> walks all
+<code>requires_grad</code> tensors via the same <code>Module::children</code>
+machinery and does <code>w.data -= lr * w.grad</code> per parameter.</p>
+
+<p><strong>Migration:</strong></p>
+<ul>
+  <li>Keep <code>src/autodiff.rs</code>, <code>src/nn.rs</code>,
+    <code>src/loss.rs</code>, <code>src/train.rs</code>, scalar examples
+    intact. They become reference material.</li>
+  <li>Add <code>src/tensor_nn.rs</code>, <code>src/tensor_loss.rs</code>,
+    <code>src/tensor_train.rs</code>.</li>
+  <li>Add <code>examples/train_xor_tensor.rs</code>. Compare convergence
+    speed and code length to the scalar version.</li>
+  <li>The <code>Module</code> trait in <code>src/module.rs</code> can
+    stay — it works for tensor-valued layers too as long as
+    <code>parameters()</code> returns <code>Vec&lt;Tensor&gt;</code> instead
+    of <code>Vec&lt;f64&gt;</code> (small interface tweak; create a new
+    <code>TensorModule</code> trait if you'd rather keep both intact).</li>
+</ul>
+</section>
+
+<!-- =================================================== -->
+<section id="verify">
+<h2>8. Verification checklist</h2>
+
+<p>Module 2 is done when:</p>
+
+<ol>
+  <li><code>cargo test --all</code> passes for all four new test files
+    (<code>test_tensor_data</code>, <code>test_tensor_ops</code>,
+    <code>test_tensor</code>, <code>test_tensor_train</code>) plus all
+    existing module 1 tests (regression check).</li>
+  <li>The tensor <code>central_difference</code>-based gradient check
+    passes for every op variant — that's the strongest possible
+    correctness statement for autograd.</li>
+  <li><code>cargo run --release --example train_xor_tensor</code>
+    converges to &gt;95% accuracy on xor without NaN. Roughly the same
+    convergence speed in epochs as the scalar version (likely faster per
+    epoch — fewer graph nodes built per sample).</li>
+  <li><code>cargo run --release --example train_xor</code> (the scalar
+    version) still works. Module 1 is intact.</li>
+  <li><code>cargo clippy -- -D warnings</code> is clean.</li>
+</ol>
+</section>
+
+<!-- =================================================== -->
+<section id="next">
+<h2>9. What's next</h2>
+
+<p>After module 2:</p>
+
+<ul>
+  <li><strong>Module 3 (CLAUDE.md item 7):</strong>
+    <code>FastOps</code> — a parallel <code>TensorBackend</code>
+    implementation using rayon. Same trait, parallel <code>map</code> /
+    <code>zip</code> / <code>reduce</code> / <code>matmul</code>. Zero
+    changes to <code>Linear</code> / <code>Network</code> / loss / train —
+    that's what the abstraction was for.</li>
+  <li><strong>Module 4 (CLAUDE.md item 8):</strong> GPU compute
+    shaders. wgpu device setup, WGSL kernels for the same trait.</li>
+  <li><strong>Side quest (CLAUDE.md):</strong> CUDA tiled matmul with
+    cudarc or Rust CUDA — one kernel, hand-written, with the shared-memory
+    + tile + thread-block reasoning fully exposed.</li>
+  <li><strong>Module 5 (CLAUDE.md item 9):</strong> NN layers — conv,
+    pooling, softmax, dropout. All in terms of tensor ops.</li>
+  <li><strong>Module 6 (CLAUDE.md item 10):</strong> the proper training
+    loop with momentum, batching, lr schedules.</li>
+</ul>
+
+<p>Every one of those slots into the abstractions module 2 sets up. The
+loud version of "build the right abstractions early": pay the cost now
+(TensorData, TensorOps trait, autograd integration) and the next four
+modules become incremental drop-ins instead of rewrites.</p>
+</section>
+
+</main>
+
+<footer>
+  <p>This is study material for the <code>minitorch-rs</code> project.
+     Companion to <code>docs/module1.md</code>. Reference materials in
+     <code>docs/minitorch-original/</code>.</p>
+  <p>Built without external CSS or JavaScript dependencies — open this
+     file in any browser and it just works.</p>
+</footer>
+
+</body>
+</html>
