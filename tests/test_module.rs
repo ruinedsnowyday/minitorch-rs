@@ -2,8 +2,8 @@ use minitorch_rs::module::*;
 
 struct SimpleModule {
     trainable: bool,
-    a: Parameter,
-    b: Parameter,
+    a: f64,
+    b: f64,
 }
 
 impl Module for SimpleModule {
@@ -19,8 +19,8 @@ impl Module for SimpleModule {
         vec![]
     }
 
-    fn parameters(&self) -> Vec<(&str, &Parameter)> {
-        vec![("a", &self.a), ("b", &self.b)]
+    fn parameters(&self) -> Vec<(String, &f64)> {
+        vec![("a".to_string(), &self.a), ("b".to_string(), &self.b)]
     }
 
     fn set_train(&mut self) {
@@ -48,10 +48,13 @@ impl Module for SimpleNet {
     }
 
     fn children_mut(&mut self) -> Vec<(&str, &mut dyn Module)> {
-        vec![("simple1", &mut self.simple1), ("simple2", &mut self.simple2)]
+        vec![
+            ("simple1", &mut self.simple1),
+            ("simple2", &mut self.simple2),
+        ]
     }
 
-    fn parameters(&self) -> Vec<(&str, &Parameter)> {
+    fn parameters(&self) -> Vec<(String, &f64)> {
         vec![]
     }
 
@@ -67,8 +70,8 @@ impl Module for SimpleNet {
 fn make_simple_module(a: f64, b: f64) -> SimpleModule {
     SimpleModule {
         trainable: true,
-        a: Parameter::new(Box::new(a)),
-        b: Parameter::new(Box::new(b)),
+        a,
+        b,
     }
 }
 
@@ -108,8 +111,8 @@ fn test_simple_module_parameters() {
     assert_eq!(params.len(), 2);
     assert_eq!(params[0].0, "a");
     assert_eq!(params[1].0, "b");
-    assert_eq!(params[0].1.parameter.data(), &[1.0]);
-    assert_eq!(params[1].1.parameter.data(), &[2.0]);
+    assert_eq!(*params[0].1, 1.0);
+    assert_eq!(*params[1].1, 2.0);
 }
 
 #[test]
@@ -181,8 +184,8 @@ fn test_net_named_parameters_values() {
     let net = make_simple_net();
     let named = net.named_parameters();
 
-    for (name, param) in &named {
-        let val = param.parameter.data()[0];
+    for (name, param) in named {
+        let val = *param;
         match name.as_str() {
             "simple1.a" => assert_eq!(val, 1.0),
             "simple1.b" => assert_eq!(val, 2.0),

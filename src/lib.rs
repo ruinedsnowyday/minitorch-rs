@@ -1,4 +1,5 @@
-pub mod operators;
-pub mod module;
-pub mod datasets;
 pub mod autodiff;
+pub mod datasets;
+pub mod module;
+pub mod nn;
+pub mod operators;

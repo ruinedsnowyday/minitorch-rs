@@ -50,13 +50,13 @@ impl ScalarOp {
 }
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
-pub struct NodeId(usize);
+pub struct NodeId(pub usize);
 
 pub struct ScalarNode {
-    op: ScalarOp,
+    pub op: ScalarOp,
     pub out: f64,
     pub gradient: f64,
-    parents: Vec<NodeId>,
+    pub parents: Vec<NodeId>,
 }
 
 impl ScalarNode {
@@ -78,9 +78,7 @@ pub struct ScalarGraph {
 
 impl ScalarGraph {
     pub fn new() -> Self {
-        ScalarGraph {
-            nodes: vec![],
-        }
+        ScalarGraph { nodes: vec![] }
     }
 
     pub fn add_leaf(&mut self, val: f64) -> NodeId {
@@ -147,6 +145,12 @@ impl ScalarGraph {
                 self.get_node_mut(parent).gradient += grad;
             }
         }
+    }
+}
+
+impl Default for ScalarGraph {
+    fn default() -> Self {
+        Self::new()
     }
 }
 

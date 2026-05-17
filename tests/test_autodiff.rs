@@ -1,4 +1,4 @@
-use minitorch_rs::autodiff::{central_difference, ScalarGraph, ScalarOp};
+use minitorch_rs::autodiff::{ScalarGraph, ScalarOp, central_difference};
 use minitorch_rs::operators;
 use proptest::prelude::*;
 
@@ -157,7 +157,11 @@ proptest! {
 
 /// Helper: gradient check for a unary function.
 /// Builds graph: x -> op -> output, backprops, compares grad(x) to central diff.
-fn grad_check_unary(val: f64, make_op: impl Fn(f64) -> ScalarOp, f: impl Fn(&[f64]) -> f64) {
+fn grad_check_unary(
+    val: f64,
+    make_op: impl Fn(f64) -> ScalarOp,
+    f: impl Fn(&[f64]) -> f64,
+) {
     let mut g = ScalarGraph::new();
     let x = g.add_leaf(val);
     let z = g.apply(make_op(val), vec![x]);
@@ -263,7 +267,7 @@ fn test_grad_compound_mul_add() {
     g.backpropagate(out, 1.0);
 
     assert_close(g.get_node(x).gradient, b + 1.0); // df/dx = y + 1
-    assert_close(g.get_node(y).gradient, a);        // df/dy = x
+    assert_close(g.get_node(y).gradient, a); // df/dy = x
 }
 
 #[test]

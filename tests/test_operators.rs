@@ -93,7 +93,7 @@ proptest! {
     fn test_sigmoid(a in small_floats()) {
         let s = sigmoid(a);
         // Always in [0, 1]
-        prop_assert!(s >= 0.0 && s <= 1.0);
+        prop_assert!((0.0..=1.0).contains(&s));
         // Symmetry: sigmoid(a) + sigmoid(-a) ≈ 1
         assert_close(s + sigmoid(-a), 1.0);
         prop_assert!(sigmoid(0.) == 0.5);

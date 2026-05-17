@@ -1,4 +1,4 @@
-const EPS: f64  = 1e-6;
+const EPS: f64 = 1e-6;
 
 pub fn mul(a: f64, b: f64) -> f64 {
     a * b
@@ -24,7 +24,6 @@ pub fn eq(a: f64, b: f64) -> f64 {
     if a == b { 1. } else { 0. }
 }
 
-
 pub fn max(a: f64, b: f64) -> f64 {
     a.max(b)
 }
@@ -34,7 +33,11 @@ pub fn is_close(a: f64, b: f64) -> bool {
 }
 
 pub fn sigmoid(a: f64) -> f64 {
-    if a > 0. { 1. / (1. + (-a).exp()) } else { a.exp() / (1. + a.exp()) }
+    if a > 0. {
+        1. / (1. + (-a).exp())
+    } else {
+        a.exp() / (1. + a.exp())
+    }
 }
 
 pub fn relu(a: f64) -> f64 {
@@ -65,19 +68,24 @@ pub fn relu_back(a: f64, d: f64) -> f64 {
     if a > 0. { d } else { 0. }
 }
 
-
 pub fn map<F>(f: F) -> impl Fn(&[f64]) -> Vec<f64>
-where F: Fn(f64) -> f64 {
+where
+    F: Fn(f64) -> f64,
+{
     move |a: &[f64]| a.iter().map(|&b| f(b)).collect()
 }
 
 pub fn zip_with<F>(f: F) -> impl Fn(&[f64], &[f64]) -> Vec<f64>
-where F: Fn(f64, f64) -> f64 {
+where
+    F: Fn(f64, f64) -> f64,
+{
     move |a: &[f64], b: &[f64]| a.iter().zip(b).map(|(&a, &b)| f(a, b)).collect()
 }
 
 pub fn reduce<F>(f: F, init: f64) -> impl Fn(&[f64]) -> f64
-where F: Fn(f64, f64) -> f64 {
+where
+    F: Fn(f64, f64) -> f64,
+{
     move |a: &[f64]| a.iter().fold(init, |a, &b| f(a, b))
 }
 
