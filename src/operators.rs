@@ -57,7 +57,7 @@ pub fn inv(a: f64) -> f64 {
 }
 
 pub fn log_back(a: f64, d: f64) -> f64 {
-    a.recip() * d
+    (a + EPS).recip() * d
 }
 
 pub fn inv_back(a: f64, d: f64) -> f64 {

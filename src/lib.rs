@@ -1,5 +1,8 @@
 pub mod autodiff;
 pub mod datasets;
+pub mod loss;
 pub mod module;
 pub mod nn;
 pub mod operators;
+pub mod xor_network;
+pub mod train;
