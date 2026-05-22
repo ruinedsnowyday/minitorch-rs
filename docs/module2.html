@@ -603,10 +603,27 @@ data copied. This is why <code>x.t()</code> in PyTorch is O(1).</div>
 
     <span class="cmt">/// Iterator over all logical indices in row-major order.</span>
     <span class="kw">pub fn</span> <span class="fn">iter_indices</span>(&amp;<span class="kw">self</span>) -&gt; <span class="kw">impl</span> <span class="ty">Iterator</span>&lt;<span class="ty">Item</span> = <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;&gt;;
+
+    <span class="cmt">/// Zero-copy broadcast view. Shape becomes target_shape; strides</span>
+    <span class="cmt">/// get 0 in any dim that was size 1 in self or didn't exist.</span>
+    <span class="cmt">/// Storage is shared via Rc::clone.</span>
+    <span class="kw">pub fn</span> <span class="fn">broadcast_to</span>(&amp;<span class="kw">self</span>, target_shape: &amp;[<span class="ty">usize</span>]) -&gt; <span class="ty">Self</span>;
 }
 
 <span class="cmt">/// Standard row-major strides for a given shape: stride[i] = product of shape[i+1..]</span>
-<span class="kw">pub fn</span> <span class="fn">contiguous_strides</span>(shape: &amp;[<span class="ty">usize</span>]) -&gt; <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;;</code></pre>
+<span class="kw">pub fn</span> <span class="fn">contiguous_strides</span>(shape: &amp;[<span class="ty">usize</span>]) -&gt; <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;;
+
+<span class="cmt">/// NumPy-style broadcast output shape. Panics if shapes are not broadcastable.</span>
+<span class="kw">pub fn</span> <span class="fn">broadcast_shape</span>(a: &amp;[<span class="ty">usize</span>], b: &amp;[<span class="ty">usize</span>]) -&gt; <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;;
+
+<span class="cmt">/// Strides for viewing (orig_shape, orig_strides) as if it had target_shape.</span>
+<span class="cmt">/// Original strides are PRESERVED for matching dims; stride 0 for dims being</span>
+<span class="cmt">/// broadcast (size 1 in orig, or didn't exist in orig at all).</span>
+<span class="kw">pub fn</span> <span class="fn">broadcast_strides</span>(
+    orig_shape: &amp;[<span class="ty">usize</span>],
+    orig_strides: &amp;[<span class="ty">usize</span>],
+    target_shape: &amp;[<span class="ty">usize</span>],
+) -&gt; <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;;</code></pre>
 
 <h4>Rust notes</h4>
 <ul>
@@ -626,6 +643,23 @@ data copied. This is why <code>x.t()</code> in PyTorch is O(1).</div>
   <li><strong><code>flat_index</code> is the hot path.</strong> It's called
     once per element per op. Resist the urge to add bounds checks beyond
     what <code>storage[offset]</code> already does via <code>Vec</code>.</li>
+  <li><strong><code>broadcast_strides</code> needs <em>original</em> strides.</strong>
+    Broadcasting doesn't invent new strides — it preserves the original
+    ones for matching dims and substitutes 0 for the dims being broadcast.
+    So the function takes <code>(orig_shape, orig_strides, target_shape)</code>,
+    not just <code>(orig_shape, target_shape)</code>. Example: source
+    <code>shape=[1, 3]</code>, <code>strides=[3, 1]</code>, target
+    <code>[4, 3]</code> → broadcast strides <code>[0, 1]</code>. The
+    original stride <code>3</code> on dim 0 is irrelevant once that dim
+    becomes broadcast.</li>
+  <li><strong>Don't <code>set</code> on a broadcast view.</strong> Multiple
+    logical cells map to the same storage slot (that's the whole point of
+    stride 0). Mutating through a broadcast view has surprising aliasing
+    semantics — and <code>Rc::make_mut</code> would COW first, masking
+    the issue but still leaving you with a view that aliases itself.
+    For autograd-style code this never matters because ops always produce
+    new tensors, but worth a <code>///</code> note on
+    <code>broadcast_to</code>.</li>
 </ul>
 
 <h4>Tests to write (<span class="file-tag">tests/test_tensor_data.rs</span>)</h4>
@@ -639,6 +673,16 @@ data copied. This is why <code>x.t()</code> in PyTorch is O(1).</div>
   <li><code>iter_indices</code> on <code>[2, 3]</code> yields
     <code>[0,0], [0,1], [0,2], [1,0], [1,1], [1,2]</code> in order.</li>
   <li><code>size</code> for <code>[2, 3, 4]</code> is 24.</li>
+  <li><code>broadcast_strides</code>: for <code>(orig=[3], strides=[1])</code>
+    to target <code>[4, 3]</code>, returns <code>[0, 1]</code>. For
+    <code>(orig=[4, 1], strides=[1, 1])</code> to <code>[4, 3]</code>,
+    returns <code>[1, 0]</code>.</li>
+  <li><code>broadcast_to</code> shares storage (<code>Rc::ptr_eq</code>
+    on the storage Rc before and after) and produces a view where
+    <code>get</code> returns the expected aliased value for each
+    broadcast index.</li>
+  <li><code>broadcast_shape([3], [4, 3])</code> returns <code>[4, 3]</code>;
+    <code>broadcast_shape([2, 4], [3, 4])</code> panics (not broadcastable).</li>
 </ul>
 </section>
 
@@ -813,6 +857,44 @@ shape_b) → (shape_out, strides_a_broadcast, strides_b_broadcast)</code>.
 The original storages aren't touched. The element-wise zip just walks
 both with their broadcast strides.</p>
 
+<p>Two ways to expose this in the API, and you want both:</p>
+
+<ul>
+  <li><strong><code>broadcast_to(target_shape) -&gt; TensorData</code></strong> —
+    a public method on <code>TensorData</code> that materializes a view
+    with the broadcast strides. Storage is shared via <code>Rc::clone</code>;
+    no copies. Useful for explicit broadcasting (e.g., in the backward of
+    broadcast ops, where you need to reduce the gradient back to the
+    original shape) and for testing the stride-0 trick in isolation.</li>
+  <li><strong>Internally inside <code>zip</code></strong> — call
+    <code>a.broadcast_to(&amp;out_shape)</code> and
+    <code>b.broadcast_to(&amp;out_shape)</code>, then iterate the common
+    output shape, reading via <code>get</code> on each view. Both views
+    have the same shape, so the iteration is symmetric. The output
+    <code>TensorData</code> built from the result is contiguous (normal
+    strides via <code>TensorData::new</code>).</li>
+</ul>
+
+<details>
+<summary>Worked example: <code>a.broadcast_to(&amp;[4, 3])</code> when
+<code>a: shape=[3], strides=[1]</code></summary>
+<pre><code><span class="kw">let</span> offset = <span class="num">2</span> - <span class="num">1</span>;  <span class="cmt">// target ndim - orig ndim = 1</span>
+<span class="cmt">// j=0 &lt; offset → new dim, stride 0</span>
+<span class="cmt">// j=1, i=0: orig_shape[0]==3, target_shape[1]==3 → keep stride 1</span>
+<span class="cmt">// result: strides=[0, 1]</span>
+
+<span class="cmt">// the broadcast TensorData:</span>
+<span class="ty">TensorData</span> {
+    storage: <span class="ty">Rc</span>::clone(&amp;a.storage),   <span class="cmt">// shared, 3 elements</span>
+    shape:   <span class="kw">vec</span>![<span class="num">4</span>, <span class="num">3</span>],
+    strides: <span class="kw">vec</span>![<span class="num">0</span>, <span class="num">1</span>],
+}
+
+<span class="cmt">// shape.iter().product() == 12 &gt; storage.len() == 3 — that's expected.</span>
+<span class="cmt">// get([0,0]), get([1,0]), get([2,0]), get([3,0]) all return storage[0],</span>
+<span class="cmt">// because stride 0 on dim 0 contributes nothing to the flat offset.</span></code></pre>
+</details>
+
 <h3 id="t22">Task 2.2 — TensorOps and SimpleOps</h3>
 <p class="file-tag">src/tensor_ops.rs</p>
 
@@ -870,6 +952,20 @@ case because it's not element-wise.</p>
     OR pick one at compile time via a type alias. Generic is more flexible;
     type alias is simpler. Start with the alias; switch to generic if you
     actually want to support multiple backends at once.</li>
+  <li><strong><code>zip</code> implementation pattern.</strong> Compute
+    <code>out_shape = broadcast_shape(&amp;a.shape, &amp;b.shape)</code>,
+    then <code>let av = a.broadcast_to(&amp;out_shape);</code> and same
+    for <code>b</code>. Now both views have identical shape — iterate
+    via <code>av.iter_indices()</code>, call <code>av.get(&amp;idx)</code>
+    and <code>bv.get(&amp;idx)</code>, push <code>f</code> of them into
+    a fresh contiguous output. Three lines of broadcast setup hide all
+    the stride-0 trickery behind a clean iteration.</li>
+  <li><strong><code>reduce</code> and <code>matmul</code> failure modes.</strong>
+    Validate at entry with <code>assert!</code>: <code>reduce</code> wants
+    <code>dim &lt; input.ndim()</code>; <code>matmul</code> wants both 2D
+    with <code>a.shape[1] == b.shape[0]</code>. Panic with a descriptive
+    message, not a silent wrong-shape result. (See the "panic vs Result"
+    decision — we panic on shape errors because they're programmer bugs.)</li>
 </ul>
 
 <h4>Tests</h4>

@@ -6,3 +6,5 @@ pub mod nn;
 pub mod operators;
 pub mod xor_network;
 pub mod train;
+pub mod tensor_data;
+pub mod tensor_ops;
