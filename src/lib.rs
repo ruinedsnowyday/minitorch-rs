@@ -8,3 +8,5 @@ pub mod xor_network;
 pub mod train;
 pub mod tensor_data;
 pub mod tensor_ops;
+pub mod tensor;
+pub mod tensor_autodiff;
