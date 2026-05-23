@@ -1,6 +1,6 @@
 use std::{collections::HashSet, rc::Rc};
 
-use crate::tensor_data::TensorData;
+use crate::{tensor::History, tensor_data::TensorData};
 
 #[derive(Clone, Copy, Eq, PartialEq, Debug, Hash)]
 pub struct TensorNodeId(pub usize);
