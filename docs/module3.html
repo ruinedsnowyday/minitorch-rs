@@ -1364,7 +1364,7 @@ fn cuda_map_matches_simple() {
   (coalescing).</p>
 
   <figure>
-    <svg viewBox="0 0 520 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Shared memory as cache with warp and L2 lanes.">
+    <svg viewBox="0 0 520 275" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Shared memory as cache with warp and L2 lanes.">
       <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
         <!-- global memory: wide, slow -->
         <rect x="20" y="30" width="480" height="40"/>
@@ -1379,7 +1379,7 @@ fn cuda_map_matches_simple() {
         <rect x="220" y="190" width="80" height="28"/>
         <text x="260" y="208" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">registers</text>
         <!-- warp lane label -->
-        <g transform="translate(380, 195)">
+        <g transform="translate(366, 230)">
           <text x="0" y="0" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">warp = 32 threads</text>
           <text x="0" y="14" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">lock-step on one SM</text>
         </g>
@@ -1396,7 +1396,7 @@ fn cuda_map_matches_simple() {
         <text x="440" y="161" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">~100×</text>
         <text x="440" y="208" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">fastest</text>
         <!-- bandwidth note -->
-        <text x="20" y="245" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">tile load = one round-trip global → shared per TILE × TILE block.</text>
+        <text x="20" y="262" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">tile load = one round-trip global → shared per TILE × TILE block.</text>
       </g>
     </svg>
     <figcaption>Figure 3.5 — shared memory as cache. Four levels, slowest to fastest: global, L2, <code>__shared__</code>, registers. A tile load brings <code>TILE × TILE</code> elements through L2 into <code>__shared__</code>; from there the block reuses them across many output elements before going back for the next tile.</figcaption>
@@ -1443,14 +1443,14 @@ fn cuda_map_matches_simple() {
         <text x="80" y="92" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">global → shared</text>
         <!-- sync bar -->
         <path d="M 130 50 L 130 130" stroke-width="2.5"/>
-        <text x="148" y="76" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none">__sync</text>
-        <text x="148" y="90" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none">threads()</text>
+        <text x="165" y="76" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none" text-anchor="middle">__sync</text>
+        <text x="165" y="90" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none" text-anchor="middle">threads()</text>
         <rect x="200" y="50" width="80" height="60"/>
         <text x="240" y="76" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">COMPUTE</text>
         <text x="240" y="92" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">accumulate</text>
         <path d="M 290 50 L 290 130" stroke-width="2.5"/>
-        <text x="308" y="76" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none">__sync</text>
-        <text x="308" y="90" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none">threads()</text>
+        <text x="325" y="76" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none" text-anchor="middle">__sync</text>
+        <text x="325" y="90" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none" text-anchor="middle">threads()</text>
         <!-- iteration 2 -->
         <text x="420" y="30" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">tile 1</text>
         <rect x="360" y="50" width="80" height="60"/>
