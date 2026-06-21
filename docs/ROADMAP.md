@@ -4,8 +4,9 @@ This document tracks what's been built, what's planned, and where the
 scope reaches beyond Sasha Rush's original five-module minitorch.
 
 The original minitorch (`docs/minitorch-original/`) ends at module 4 — a
-CNN trained on MNIST. This project follows that path for parity, adds a
-CUDA side quest already specified in `CLAUDE.md`, and then extends into
+CNN trained on MNIST. This project follows that path for parity, makes CUDA
+the Module 3 GPU backend with a wgpu cross-platform retrofit as Module 3.5
+(both specified in `CLAUDE.md`), and then extends into
 territory minitorch doesn't cover: modern optimizers, attention,
 quantization, and packaging. Phase 1 hits parity; phase 2 modernizes;
 phase 3 is aspirational and explicitly optional.
@@ -23,8 +24,8 @@ discipline established in CLAUDE.md transfers without restating it.
 | 0 | Fundamentals (operators, Module tree) | ✅ done |
 | 1 | Scalar autodiff (tape, backprop, chain rule) | ✅ done |
 | 2 | Tensors + tensor autodiff (forward + backward, all ops) | ✅ done |
-| 3 | Efficiency: parallel CPU + GPU backends | ⬜ next |
-| 3.5 | CUDA tiled matmul side quest | ⬜ next, after 3 |
+| 3 | Efficiency: Rayon + SIMD CPU, CUDA GPU backends | ⬜ next |
+| 3.5 | wgpu cross-platform retrofit (port CUDA kernels to WGSL) | ⬜ next, after 3 |
 | 4 | NN layers + train a CNN on MNIST | ⬜ planned |
 | 5+ | Scope expansions — see phase 2 | 🔮 proposed |
 
@@ -35,38 +36,45 @@ implement yourself": `CLAUDE.md`'s ten-item core list.
 
 ## Phase 1 — Reach minitorch parity
 
-### Module 3 — Efficiency (parallel CPU + wgpu GPU)
+### Module 3 — Efficiency (Rayon + SIMD CPU, CUDA GPU)
 
-**Deliverable.** A `FastOps` backend (Rayon) and a `GpuOps` backend (wgpu
-+ WGSL shaders) that implement the same `TensorOps` trait as `SimpleOps`.
-Backend choice via type alias or trait generics. All existing tests pass
-against any backend. A benchmark suite (`cargo bench`, criterion) shows
-speedup on representative ops vs the naive backend.
+**Deliverable.** A `FastOps` backend (Rayon parallelism + `std::simd`
+vectorization) and a `CudaOps` backend (cudarc + CUDA C kernels via NVRTC)
+that implement the same `TensorOps` trait as `SimpleOps`. Backend choice via
+type alias or trait generics. All existing tests pass against any backend
+(CUDA tests gated behind `feature = "cuda"`, run on Colab). A benchmark suite
+(`cargo bench`, criterion) shows speedup across naive → Rayon → Rayon + SIMD
+→ CUDA.
 
-**Learn-yourself.** The parallel/GPU map/zip/reduce/matmul. The WGSL
-compute kernels themselves. The trait-generic backend abstraction.
+**Learn-yourself.** The parallel + vectorized CPU map/zip/reduce/matmul. The
+SIMD lift. The CUDA map/zip/reduce kernels and the tiled matmul. The
+trait-generic backend abstraction.
 
-**AI-free-speed.** wgpu device/adapter/queue setup. Buffer management.
-Criterion harness. CI for both backends.
+**AI-free-speed.** cudarc device init / NVRTC plumbing / kernel launch
+wrappers. SIMD-emission verification tooling. Criterion harness. CI for the
+CPU backends (CUDA CI is Colab-only).
 
 **Prerequisite.** Module 2 (done). The `TensorOps` trait already in place.
+The student has Colab Pro+ (A100/H100) for the CUDA work.
 
 ---
 
-### Module 3.5 — CUDA tiled matmul (side quest)
+### Module 3.5 — wgpu cross-platform retrofit (side quest)
 
-Already specified in CLAUDE.md. Implement one kernel — tiled matrix
-multiplication with shared memory — natively for CUDA via either Rust CUDA
-(preferred) or cudarc (fallback). Produces the four-way matmul benchmark:
-naive CPU → Rayon → wgpu → CUDA.
+Already specified in CLAUDE.md. After the CUDA backend works, port the
+kernels to WGSL compute shaders behind a wgpu `GpuOps` backend, so the
+framework also runs on non-NVIDIA hardware (the student's Mac, any GPU).
+Extends the benchmark to naive CPU → Rayon → Rayon + SIMD → CUDA → wgpu.
 
-**Learn-yourself.** The CUDA kernel. Memory hierarchy, warps, bank
-conflicts, occupancy.
+**Learn-yourself.** The WGSL kernels (map/zip/reduce/tiled matmul). What a
+portable API exposes vs CUDA — workgroups vs blocks, `workgroupBarrier()` vs
+`__syncthreads()`, no warp/bank-conflict control.
 
-**AI-free-speed.** Toolchain setup, host-side launch wrappers, NVRTC
-plumbing.
+**AI-free-speed.** wgpu device/adapter/queue/pipeline setup. Buffer
+management.
 
-**Prerequisite.** Module 3 (need wgpu matmul to compare against).
+**Prerequisite.** Module 3 (need the CUDA kernels to port and to compare
+against).
 
 ---
 
@@ -194,8 +202,9 @@ Worth doing whenever it pays for itself, not gated to any module:
   shape, stride math, grad-check equivalences across backends.
 - **`cargo bench` discipline** (criterion) for every backend op once
   there's more than one backend to compare.
-- **CI matrix** — at minimum `cargo test` on Linux+macOS, ideally also a
-  wgpu test path once module 3 lands.
+- **CI matrix** — at minimum `cargo test` on Linux+macOS for the CPU
+  backends; a CUDA test path needs a GPU runner (Colab) once module 3 lands,
+  and a wgpu path arrives with module 3.5.
 - **A `docs/learning-log.md`** capturing concepts mastered per module —
   the artifact that turns this from "code that exists" into "evidence the
   learning happened." `CLAUDE.md` calls this out; it doesn't exist yet.

@@ -1,0 +1,1818 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Module 3 — Efficiency · minitorch-rs</title>
+  <link rel="canonical" href="https://github.com/atrof002/minitorch-rs/blob/main/docs/module3.html">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600&family=Source+Serif+4:wght@400;600&display=swap">
+  <style>
+    :root {
+      --paper: #EFEDE5;
+      --body: #1B1B1B;
+      --prussian: #1F3A5F;
+      --code-bg: #EAE7DE;
+      --muted: #7A7674;
+    }
+
+    * { box-sizing: border-box; }
+
+    html, body {
+      margin: 0;
+      padding: 0;
+      background: var(--paper);
+      color: var(--body);
+    }
+
+    body {
+      font-family: "Source Serif 4", Charter, "Iowan Old Style", Georgia, serif;
+      font-size: 16px;
+      line-height: 1.65;
+      padding: 48px 32px 96px;
+    }
+
+    .wrap {
+      max-width: 720px;
+      margin: 0 auto;
+    }
+
+    header {
+      margin-bottom: 56px;
+    }
+
+    h1, h2, h3 {
+      font-family: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-weight: 600;
+      color: var(--prussian);
+      line-height: 1.25;
+    }
+
+    h1 {
+      font-size: 26px;
+      margin: 0 0 12px;
+      letter-spacing: -0.01em;
+    }
+
+    h2 {
+      font-size: 20px;
+      margin: 64px 0 16px;
+    }
+
+    h3 {
+      font-size: 16px;
+      margin: 36px 0 12px;
+      color: var(--body);
+    }
+
+    p {
+      margin: 0 0 14px;
+    }
+
+    .subtitle {
+      font-family: "Source Serif 4", Charter, Georgia, serif;
+      font-style: italic;
+      color: var(--muted);
+      font-size: 17px;
+      margin: 0 0 12px;
+    }
+
+    .meta {
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      font-size: 12px;
+      color: var(--muted);
+      margin: 0;
+    }
+
+    .eyebrow {
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 4px;
+    }
+
+    a {
+      color: var(--prussian);
+      text-decoration: none;
+    }
+
+    a:hover {
+      text-decoration: underline;
+    }
+
+    pre {
+      background: var(--code-bg);
+      color: var(--body);
+      font-family: "JetBrains Mono", ui-monospace, Menlo, Consolas, monospace;
+      font-size: 13.5px;
+      line-height: 1.55;
+      padding: 16px 18px;
+      margin: 18px 0;
+      overflow-x: auto;
+      border-radius: 0;
+    }
+
+    pre code {
+      font-family: inherit;
+      color: inherit;
+      background: none;
+    }
+
+    p code, li code, td code {
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      font-size: 13.5px;
+      background: var(--code-bg);
+      padding: 1px 5px;
+    }
+
+    aside.callout {
+      border-left: 2px solid var(--prussian);
+      padding: 4px 0 4px 16px;
+      margin: 20px 0;
+    }
+
+    aside.callout .label {
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      font-weight: 600;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--prussian);
+      margin: 0 0 4px;
+    }
+
+    aside.callout p {
+      margin: 0 0 8px;
+    }
+
+    aside.callout p:last-child {
+      margin-bottom: 0;
+    }
+
+    figure {
+      margin: 28px 0;
+      padding: 0;
+    }
+
+    figure svg {
+      display: block;
+      width: 100%;
+      height: auto;
+      margin: 0 auto;
+    }
+
+    figcaption {
+      font-family: "Source Serif 4", Charter, Georgia, serif;
+      font-style: italic;
+      font-size: 12px;
+      color: var(--muted);
+      margin-top: 10px;
+      text-align: left;
+    }
+
+    nav.toc {
+      border-top: 1px solid var(--muted);
+      border-bottom: 1px solid var(--muted);
+      padding: 16px 0;
+      margin: 40px 0;
+    }
+
+    nav.toc p {
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 8px;
+    }
+
+    nav.toc ol {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      font-size: 13px;
+    }
+
+    nav.toc li {
+      margin: 4px 0;
+    }
+
+    nav.toc li a {
+      color: var(--body);
+    }
+
+    ul, ol {
+      padding-left: 22px;
+    }
+
+    li {
+      margin: 4px 0;
+    }
+
+    table {
+      border-collapse: collapse;
+      margin: 20px 0;
+      font-size: 14px;
+      width: 100%;
+    }
+
+    table th, table td {
+      border-bottom: 1px solid var(--muted);
+      padding: 8px 10px;
+      text-align: left;
+      vertical-align: top;
+    }
+
+    table th {
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      font-weight: 600;
+      font-size: 12px;
+      letter-spacing: 0.04em;
+      color: var(--prussian);
+      border-bottom: 2px solid var(--prussian);
+    }
+
+    table td {
+      font-family: "Source Serif 4", Charter, Georgia, serif;
+    }
+
+    table td.mono, table td code {
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      font-size: 12.5px;
+    }
+
+    .sxs {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 12px;
+      margin: 18px 0;
+    }
+
+    .sxs > div .lbl {
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      font-size: 11px;
+      letter-spacing: 0.1em;
+      text-transform: uppercase;
+      color: var(--muted);
+      margin: 0 0 4px;
+    }
+
+    @media (min-width: 760px) {
+      .sxs {
+        grid-template-columns: 1fr 1fr;
+        gap: 18px;
+      }
+    }
+
+    footer {
+      margin-top: 80px;
+      padding-top: 18px;
+      border-top: 1px solid var(--muted);
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      font-size: 12px;
+      color: var(--muted);
+    }
+
+    section {
+      margin-bottom: 40px;
+    }
+
+    hr.rule {
+      border: 0;
+      border-top: 1px solid var(--muted);
+      margin: 48px 0;
+    }
+  </style>
+</head>
+<body>
+<div class="wrap">
+
+<header>
+  <p class="eyebrow">minitorch-rs · module 3</p>
+  <h1>Module 3 — Efficiency</h1>
+  <p class="subtitle">Rayon parallelism, SIMD vectorization, and CUDA via cudarc.</p>
+  <p class="meta">Cross-doc: <a href="module3.md">module3.md</a> (terse desk reference) · Upstream: <a href="https://minitorch.github.io/module3/module3/">minitorch.github.io/module3</a> · Prior: <a href="module2.html">module2.html</a></p>
+</header>
+
+<nav class="toc" aria-label="Table of contents">
+  <p>Sections</p>
+  <ol>
+    <li>1 · <a href="#intro">Intro &amp; how to read</a></li>
+    <li>2 · <a href="#why">Why this module exists</a></li>
+    <li>3 · <a href="#task-31">Task 3.1 — Parallel + vectorized CPU map / zip / reduce</a></li>
+    <li>4 · <a href="#task-32">Task 3.2 — Parallel fused matmul (CPU)</a></li>
+    <li>5 · <a href="#task-33">Task 3.3 — GPU map / zip / reduce (cudarc + NVRTC)</a></li>
+    <li>6 · <a href="#task-34">Task 3.4 — CUDA tiled matmul</a></li>
+    <li>7 · <a href="#task-35">Task 3.5 — Wiring, verification, benchmarks</a></li>
+    <li>8 · <a href="#next">What's next &amp; whiteboard sanity-check</a></li>
+  </ol>
+</nav>
+
+<main>
+
+<section id="intro">
+  <p class="eyebrow">Section 1</p>
+  <h2>Intro &amp; how to read</h2>
+
+  <p>Modules 0 through 2 built the framework's <em>contract</em>: a <code>Tensor</code>
+  type with autodiff, a <code>TensorOps</code> trait that defines <code>map</code>,
+  <code>zip</code>, <code>reduce</code>, and <code>matmul</code>, and a baseline
+  <code>SimpleOps</code> implementation that gets the math right while ignoring
+  performance. Module 3 keeps the contract and rewrites the implementation
+  twice — once for parallel + vectorized CPU (<code>FastOps</code>), once for
+  CUDA (<code>CudaOps</code>). The user-facing API does not change. The tests do
+  not change. Only the speed changes.</p>
+
+  <p>This is the framework moment where you stop pretending the CPU is one slow
+  scalar machine and start treating it as many cores, each with vector lanes,
+  cooperating with a co-processor that has its own memory hierarchy. The
+  lesson lives in <em>how those layers compose</em>: parallelism across cores,
+  vectorization within a core, kernels on a device. Each layer has its own
+  failure modes and its own vocabulary.</p>
+
+  <p>The original minitorch (Python) ships Numba JIT and CUDA via Numba. Our
+  port replaces those with the Rust-shaped equivalents: <a href="https://docs.rs/rayon">Rayon</a>
+  for data parallelism, <a href="https://doc.rust-lang.org/std/simd/">std::simd</a>
+  (portable SIMD, currently nightly) for explicit vectorization, and
+  <a href="https://github.com/coreylowman/cudarc">cudarc</a> for the CUDA side,
+  with kernels written in CUDA C and compiled at runtime through NVRTC.</p>
+
+  <aside class="callout">
+    <p class="label">Concept</p>
+    <p>The Module 3 mental model in one sentence: <em>parallelism (across cores)
+    and vectorization (within a core) are two independent axes that compose;
+    the GPU is a third axis with its own memory hierarchy that you opt into
+    when arithmetic intensity is high enough to pay the launch cost.</em></p>
+  </aside>
+
+  <h3>The no-implementation contract still holds</h3>
+
+  <p>This doc carries trait stubs, signatures, prose, diagrams, and idiom
+  snippets on <em>unrelated data</em>. It does not carry a working Rayon
+  reduce, a working SIMD lift of a closure, or a working tiled-matmul CUDA
+  body. You write those. If you find a sentence in here that would let you
+  paste your way to a passing test, that's a bug — file it.</p>
+
+  <h3>Where the work happens</h3>
+
+  <p>The Rust host code compiles locally (macOS, M-series). CUDA kernel
+  iteration happens on Colab Pro+ with A100 or H100 access. Concretely: you
+  edit <code>.cu</code> source files in this repo, push, pull on a Colab
+  notebook, run the test that launches them. The doc names this once and
+  moves on — the iteration loop is not the lesson.</p>
+
+  <h3>Module 3 vs Module 3.5</h3>
+
+  <p>Module 3 is Rayon + CUDA. Module 3.5 — separate, smaller — is the
+  <em>wgpu retrofit</em>: porting the CUDA kernels to WGSL so the backend
+  also runs on Apple Silicon, Intel iGPUs, and anything WebGPU touches.
+  3.5 is cross-platform packaging. 3 is the core teaching.</p>
+</section>
+
+<hr class="rule">
+
+<section id="why">
+  <p class="eyebrow">Section 2</p>
+  <h2>Why this module exists</h2>
+
+  <p>Open <code>src/tensor_ops.rs</code>. Look at <code>SimpleOps::zip</code> at
+  lines 34–47. The code is short. It is also, in a way that is not obvious from
+  reading it, several orders of magnitude slower than the silicon underneath
+  can sustain.</p>
+
+  <div class="sxs">
+    <div>
+      <p class="lbl">Before — SimpleOps::zip</p>
+<pre><code>fn zip(
+    a: &amp;TensorData,
+    b: &amp;TensorData,
+    f: impl Fn(f64, f64) -&gt; f64,
+) -&gt; TensorData {
+    let out_shape = broadcast_shape(&amp;a.shape, &amp;b.shape);
+    let a_view = a.broadcast_to(&amp;out_shape);
+    let b_view = b.broadcast_to(&amp;out_shape);
+    let mut storage: Vec&lt;f64&gt; =
+        Vec::with_capacity(out_shape.iter().product());
+    for idx_vec in a_view.iter_indices() {
+        storage.push(f(a_view.get(&amp;idx_vec),
+                       b_view.get(&amp;idx_vec)));
+    }
+    TensorData::new(storage, out_shape)
+}</code></pre>
+    </div>
+    <div>
+      <p class="lbl">After — FastOps::zip (stub)</p>
+<pre><code>fn zip(
+    a: &amp;TensorData,
+    b: &amp;TensorData,
+    f: impl Fn(f64, f64) -&gt; f64 + Sync,
+) -&gt; TensorData {
+    unimplemented!()
+}</code></pre>
+      <p style="font-family:'Source Serif 4',serif;font-size:13px;color:var(--muted);margin-top:8px">
+      The signature is almost identical — the body is where the whole lesson
+      lives. The one real change: the closure picks up <code>+ Sync</code>
+      because Rayon shares it across worker threads, and that bound goes on the
+      <code>TensorOps</code> trait declaration (so <code>SimpleOps</code>
+      carries it too), not on this impl alone. Add it only here and the
+      compiler rejects it — E0276, "impl has stricter requirements than trait."</p>
+    </div>
+  </div>
+
+  <p>What's slow about the "before"?</p>
+
+  <ol>
+    <li>The for-loop is sequential — one CPU core, one element at a time. Your
+    laptop has eight cores standing idle. A server has 64.</li>
+    <li>The inner call <code>a_view.get(&amp;idx_vec)</code> performs a dot product
+    over <code>shape.len()</code> values per element — a stride lookup —
+    allocating a <code>Vec&lt;usize&gt;</code> per index step. None of this is
+    visible at the call site.</li>
+    <li>The closure <code>f</code> is opaque to the compiler. It can be
+    <em>monomorphized</em> (Rust's term for "specialized at compile time for
+    each concrete <code>F</code>"), which is good. But it cannot be
+    auto-vectorized, because the surrounding loop reads through
+    <code>broadcast_to</code> views with potentially stride-0 dimensions and
+    the LLVM <code>LoopVectorize</code> pass gives up.</li>
+    <li>Every loop body issues one scalar floating-point instruction. Modern
+    cores have vector units that can issue four or eight floating-point
+    multiplies per cycle. Those units never light up.</li>
+  </ol>
+
+  <aside class="callout">
+    <p class="label">Concept</p>
+    <p><strong>Arithmetic intensity</strong> = FLOPs per byte moved. Element-wise
+    map and zip have intensity near 1 — one multiply per two loads and one
+    store. Matmul has intensity proportional to the matrix dimension — every
+    byte of A and B gets used by many output elements. This single number
+    predicts where the GPU wins and where the CPU wins. Element-wise on GPU
+    often <em>loses</em> because the launch and memcpy cost dwarfs the work.
+    Matmul on GPU wins by orders of magnitude because the chip is starving
+    on the CPU.</p>
+  </aside>
+
+  <p>This is why Module 3 spends most of its time on matmul on both backends.
+  Map and zip are the simplest cases to write parallel, and they teach the
+  vocabulary. Reduce introduces contention. Matmul is where the architecture
+  matters and where the speedup curve gets steep.</p>
+
+  <h3>What you'll record</h3>
+
+  <p>Before you write any optimized backend, write down the wall-clock time
+  for <code>SimpleOps</code> on three representative workloads (element-wise on
+  a million floats, reduce over a million floats, matmul on 1024×1024). You
+  will refer back to those numbers three times as you implement each backend.
+  Without the baseline, the "after" numbers are decoration.</p>
+</section>
+
+<hr class="rule">
+
+<section id="task-31">
+  <p class="eyebrow">Task 3.1</p>
+  <h2>Parallel + vectorized CPU map / zip / reduce</h2>
+
+  <p>The single most important framing for Task 3.1, the one to internalize
+  before opening an editor: <strong>parallelism and vectorization are independent
+  axes</strong>. You can have neither (the current <code>SimpleOps</code>), parallel
+  but scalar (Rayon alone), vectorized but single-core (SIMD alone), or both
+  (Rayon-chunked, SIMD-inside). Figure 3.7 at the end of this section shows the
+  four cells.</p>
+
+  <p>The reason Module 3 covers both: hoping the compiler will auto-vectorize
+  your Rayon-parallel loop is a losing bet. The trait's
+  <code>impl Fn(f64) -&gt; f64</code> closure has an unknown body across crates;
+  the loop reads through a <code>broadcast_to</code> view with strides that the
+  compiler cannot prove are unit; and reductions need a reorder the optimizer
+  is not allowed to perform under default floating-point rules. The
+  <code>LoopVectorize</code> pass declines, silently. You write the SIMD
+  yourself.</p>
+
+  <figure>
+    <svg viewBox="0 0 480 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Element-wise op: serial versus parallel.">
+      <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
+        <!-- Serial row label -->
+        <text x="20" y="50" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">serial</text>
+        <text x="20" y="64" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A7674" stroke="none">one worker</text>
+        <!-- Serial row: 16 boxes -->
+        <g transform="translate(110, 40)">
+          <rect x="0" y="0" width="20" height="20" stroke-width="2.5"/>
+          <rect x="22" y="0" width="20" height="20"/>
+          <rect x="44" y="0" width="20" height="20"/>
+          <rect x="66" y="0" width="20" height="20"/>
+          <rect x="88" y="0" width="20" height="20"/>
+          <rect x="110" y="0" width="20" height="20"/>
+          <rect x="132" y="0" width="20" height="20"/>
+          <rect x="154" y="0" width="20" height="20"/>
+          <rect x="176" y="0" width="20" height="20"/>
+          <rect x="198" y="0" width="20" height="20"/>
+          <rect x="220" y="0" width="20" height="20"/>
+          <rect x="242" y="0" width="20" height="20"/>
+          <rect x="264" y="0" width="20" height="20"/>
+          <rect x="286" y="0" width="20" height="20"/>
+          <rect x="308" y="0" width="20" height="20"/>
+          <rect x="330" y="0" width="20" height="20"/>
+          <path d="M 10 28 L 340 28" stroke-dasharray="3 3"/>
+          <path d="M 340 28 L 335 25 M 340 28 L 335 31"/>
+          <text x="170" y="42" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A7674" stroke="none" text-anchor="middle">time</text>
+        </g>
+        <!-- Parallel row label -->
+        <text x="20" y="130" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">parallel</text>
+        <text x="20" y="144" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A7674" stroke="none">4 workers</text>
+        <!-- Parallel row: 16 boxes, grouped in 4 -->
+        <g transform="translate(110, 120)">
+          <!-- worker 1 -->
+          <rect x="0" y="0" width="20" height="20" stroke-width="2.5"/>
+          <rect x="22" y="0" width="20" height="20"/>
+          <rect x="44" y="0" width="20" height="20"/>
+          <rect x="66" y="0" width="20" height="20"/>
+          <path d="M -4 -6 L 92 -6 L 92 26 L -4 26 Z" stroke-dasharray="2 2"/>
+          <!-- worker 2 -->
+          <rect x="100" y="0" width="20" height="20" stroke-width="2.5"/>
+          <rect x="122" y="0" width="20" height="20"/>
+          <rect x="144" y="0" width="20" height="20"/>
+          <rect x="166" y="0" width="20" height="20"/>
+          <path d="M 96 -6 L 192 -6 L 192 26 L 96 26 Z" stroke-dasharray="2 2"/>
+          <!-- worker 3 -->
+          <rect x="200" y="0" width="20" height="20" stroke-width="2.5"/>
+          <rect x="222" y="0" width="20" height="20"/>
+          <rect x="244" y="0" width="20" height="20"/>
+          <rect x="266" y="0" width="20" height="20"/>
+          <path d="M 196 -6 L 292 -6 L 292 26 L 196 26 Z" stroke-dasharray="2 2"/>
+          <!-- worker 4 -->
+          <rect x="300" y="0" width="20" height="20" stroke-width="2.5"/>
+          <rect x="322" y="0" width="20" height="20"/>
+          <rect x="344" y="0" width="20" height="20"/>
+          <rect x="366" y="0" width="20" height="20" transform="translate(-16, 0)"/>
+          <text x="42" y="44" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">w0</text>
+          <text x="142" y="44" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">w1</text>
+          <text x="242" y="44" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">w2</text>
+          <text x="334" y="44" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">w3</text>
+        </g>
+      </g>
+    </svg>
+    <figcaption>Figure 3.1 — element-wise op: serial vs parallel. Same 16 output cells, top sequential through one worker, bottom split four ways. The thick-stroked cell shows the current write; dashed groupings show worker partitions.</figcaption>
+  </figure>
+
+  <h3>Sub-3.1.a — Rayon parallelism</h3>
+
+  <p>Rayon turns the output loop into <em>data parallelism</em> over a
+  work-stealing thread pool. The mental model: instead of "for each output
+  index in 0..n, compute it," you say "here are n output indices; split them
+  across the pool however you like." Rayon takes care of how. The hard parts
+  are write contention (none for map and zip, since each output cell is
+  written by exactly one worker) and reductions (where there is no obvious
+  per-cell partition).</p>
+
+  <aside class="callout">
+    <p class="label">Rust</p>
+    <p>The closure passed across threads needs <code>Sync</code> (and maybe
+    <code>Send</code> — let the compiler say which). Expect a bound like
+    <code>f: impl Fn(f64) -&gt; f64 + Sync</code> — but it goes on the
+    <code>TensorOps</code> trait declaration in <code>src/tensor_ops.rs</code>,
+    not on the <code>FastOps</code> impl alone. Because the trait method takes
+    <code>impl Fn(...)</code>, every impl must match it: add the bound only to
+    <code>FastOps</code> and the compiler rejects it with E0276, "impl has
+    stricter requirements than trait." Put it on the trait and
+    <code>SimpleOps</code> inherits it too — harmless, its closures are already
+    <code>Sync</code>. <code>Sync</code> means "safe to share <em>references</em>
+    across threads"; <code>Send</code> means "safe to <em>move</em> ownership
+    across threads."</p>
+  </aside>
+
+  <p>Rayon's API is shaped like Rust's <code>std::iter</code>: convert with
+  <code>.par_iter()</code>, <code>.into_par_iter()</code>, or
+  <code>.par_chunks(...)</code>, then chain. Here is the <em>unrelated</em>
+  idiom — counters, not tensor data — that shows the call shape once:</p>
+
+<pre><code>use rayon::prelude::*;
+
+let total: u64 = (0..1_000u64)
+    .into_par_iter()
+    .map(|i| i * i)
+    .sum();</code></pre>
+
+  <p>That is the API surface. It tells you nothing about how to walk a strided
+  tensor view with a broadcast partner — you do that part. The Rayon side
+  cares only about handing chunks of work to threads.</p>
+
+  <aside class="callout">
+    <p class="label">Why</p>
+    <p>Map and zip are <em>embarrassingly parallel</em>: each output cell is
+    independent. Reduce is not. A naive parallel reduce — all threads adding
+    into one shared accumulator — is a data race. The Rust borrow checker
+    catches the race at compile time (you cannot share a
+    <code>&amp;mut f64</code> across threads), which is the language saving you
+    from a bug Python would have shipped.</p>
+  </aside>
+
+  <h3>The reduce pattern</h3>
+
+  <p>For reduce, the canonical Rayon shape is <em>per-thread fold, serial
+  combine</em>. Each thread folds its own slice of input into a local
+  accumulator; the local accumulators get combined pairwise at the end.
+  No shared mutable state, no contention. Figure 3.2 shows the shape.</p>
+
+  <figure>
+    <svg viewBox="0 0 480 240" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Why reduce is harder than map.">
+      <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
+        <!-- left half: naive contention -->
+        <text x="20" y="20" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">naive: one accumulator</text>
+        <g transform="translate(20, 40)">
+          <!-- 8 input cells in a row -->
+          <rect x="0" y="0" width="18" height="18"/>
+          <rect x="20" y="0" width="18" height="18"/>
+          <rect x="40" y="0" width="18" height="18"/>
+          <rect x="60" y="0" width="18" height="18"/>
+          <rect x="80" y="0" width="18" height="18"/>
+          <rect x="100" y="0" width="18" height="18"/>
+          <rect x="120" y="0" width="18" height="18"/>
+          <rect x="140" y="0" width="18" height="18"/>
+          <!-- arrows converging -->
+          <path d="M 9 22 L 90 110"/>
+          <path d="M 29 22 L 92 110"/>
+          <path d="M 49 22 L 94 110"/>
+          <path d="M 69 22 L 96 110"/>
+          <path d="M 89 22 L 98 110"/>
+          <path d="M 109 22 L 100 110"/>
+          <path d="M 129 22 L 102 110"/>
+          <path d="M 149 22 L 104 110"/>
+          <!-- single accumulator -->
+          <rect x="74" y="112" width="40" height="22" stroke-width="2.5"/>
+          <text x="94" y="127" font-family="JetBrains Mono, monospace" font-size="10" fill="#1B1B1B" stroke="none" text-anchor="middle">acc</text>
+          <!-- contention marker -->
+          <text x="94" y="160" font-family="JetBrains Mono, monospace" font-size="11" fill="#1F3A5F" stroke="none" text-anchor="middle">race</text>
+          <path d="M 80 145 L 108 145 M 84 150 L 104 150" stroke-dasharray="2 2"/>
+        </g>
+        <!-- right half: tree reduce -->
+        <text x="260" y="20" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">tree: fold then combine</text>
+        <g transform="translate(260, 40)">
+          <!-- 8 input cells -->
+          <rect x="0" y="0" width="18" height="18"/>
+          <rect x="20" y="0" width="18" height="18"/>
+          <rect x="40" y="0" width="18" height="18"/>
+          <rect x="60" y="0" width="18" height="18"/>
+          <rect x="80" y="0" width="18" height="18"/>
+          <rect x="100" y="0" width="18" height="18"/>
+          <rect x="120" y="0" width="18" height="18"/>
+          <rect x="140" y="0" width="18" height="18"/>
+          <!-- four per-thread folds -->
+          <path d="M 9 22 L 28 50"/>
+          <path d="M 29 22 L 28 50"/>
+          <path d="M 49 22 L 68 50"/>
+          <path d="M 69 22 L 68 50"/>
+          <path d="M 89 22 L 108 50"/>
+          <path d="M 109 22 L 108 50"/>
+          <path d="M 129 22 L 148 50"/>
+          <path d="M 149 22 L 148 50"/>
+          <rect x="18" y="52" width="22" height="18"/>
+          <rect x="58" y="52" width="22" height="18"/>
+          <rect x="98" y="52" width="22" height="18"/>
+          <rect x="138" y="52" width="22" height="18"/>
+          <!-- pairwise combine -->
+          <path d="M 29 74 L 50 102"/>
+          <path d="M 69 74 L 50 102"/>
+          <path d="M 109 74 L 128 102"/>
+          <path d="M 149 74 L 128 102"/>
+          <rect x="40" y="104" width="22" height="18"/>
+          <rect x="118" y="104" width="22" height="18"/>
+          <!-- final -->
+          <path d="M 51 126 L 89 154"/>
+          <path d="M 129 126 L 89 154"/>
+          <rect x="76" y="156" width="30" height="20" stroke-width="2.5"/>
+          <text x="91" y="170" font-family="JetBrains Mono, monospace" font-size="10" fill="#1B1B1B" stroke="none" text-anchor="middle">sum</text>
+        </g>
+      </g>
+    </svg>
+    <figcaption>Figure 3.2 — why reduce is harder than map. Left: all inputs converge on one accumulator and threads collide. Right: four per-thread folds combine pairwise, then once more. The Rayon shape is the right diagram.</figcaption>
+  </figure>
+
+  <p>Here is the FastOps surface as you will leave it after Task 3.1.a — every
+  body is a placeholder. You fill the bodies; the trait already specifies the
+  contract.</p>
+
+<pre><code>pub struct FastOps;
+
+impl TensorOps for FastOps {
+    fn map(input: &amp;TensorData,
+           f: impl Fn(f64) -&gt; f64 + Sync) -&gt; TensorData {
+        unimplemented!()
+    }
+
+    fn zip(a: &amp;TensorData,
+           b: &amp;TensorData,
+           f: impl Fn(f64, f64) -&gt; f64 + Sync) -&gt; TensorData {
+        unimplemented!()
+    }
+
+    fn reduce(input: &amp;TensorData,
+              f: impl Fn(f64, f64) -&gt; f64 + Sync,
+              init: f64,
+              dim: usize,
+              keep_dims: bool) -&gt; TensorData {
+        unimplemented!()
+    }
+
+    fn matmul(a: &amp;TensorData, b: &amp;TensorData) -&gt; TensorData {
+        unimplemented!()
+    }
+}</code></pre>
+
+  <h3>Broadcasting under parallelism</h3>
+
+  <p>Broadcasting interacts with parallelism in a way that is easy to get
+  wrong. A stride-0 dimension means many output positions read the
+  <em>same</em> input scalar. That is safe to do in parallel — reads do not
+  race. But it does mean your worker's "input view" is not contiguous: the
+  worker has to look up the underlying scalar through the same stride
+  arithmetic the serial path used. Don't try to be clever about avoiding the
+  lookup; do try to make sure each worker computes its own indices
+  independently, with no shared mutable state.</p>
+
+  <figure>
+    <svg viewBox="0 0 480 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Broadcasting under parallelism.">
+      <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
+        <!-- broadcast source: 1x3 row -->
+        <text x="20" y="20" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">row tensor, shape [3]</text>
+        <g transform="translate(20, 30)">
+          <rect x="0" y="0" width="40" height="22"/>
+          <rect x="42" y="0" width="40" height="22"/>
+          <rect x="84" y="0" width="40" height="22"/>
+        </g>
+        <!-- output: 4x3 grid -->
+        <text x="240" y="20" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">output, shape [4, 3]</text>
+        <g transform="translate(240, 30)">
+          <rect x="0" y="0" width="40" height="22"/>
+          <rect x="42" y="0" width="40" height="22"/>
+          <rect x="84" y="0" width="40" height="22"/>
+          <rect x="0" y="28" width="40" height="22"/>
+          <rect x="42" y="28" width="40" height="22"/>
+          <rect x="84" y="28" width="40" height="22"/>
+          <rect x="0" y="56" width="40" height="22"/>
+          <rect x="42" y="56" width="40" height="22"/>
+          <rect x="84" y="56" width="40" height="22"/>
+          <rect x="0" y="84" width="40" height="22"/>
+          <rect x="42" y="84" width="40" height="22"/>
+          <rect x="84" y="84" width="40" height="22"/>
+        </g>
+        <!-- worker brackets on output rows -->
+        <g transform="translate(240, 30)">
+          <path d="M 130 0 L 138 0 L 138 22 L 130 22" stroke-dasharray="2 2"/>
+          <text x="148" y="16" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">w0</text>
+          <path d="M 130 28 L 138 28 L 138 50 L 130 50" stroke-dasharray="2 2"/>
+          <text x="148" y="44" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">w1</text>
+          <path d="M 130 56 L 138 56 L 138 78 L 130 78" stroke-dasharray="2 2"/>
+          <text x="148" y="72" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">w2</text>
+          <path d="M 130 84 L 138 84 L 138 106 L 130 106" stroke-dasharray="2 2"/>
+          <text x="148" y="100" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">w3</text>
+        </g>
+        <!-- arrows fanning from row to every output row -->
+        <g>
+          <path d="M 145 52 L 240 41" stroke-dasharray="3 2"/>
+          <path d="M 145 52 L 240 69" stroke-dasharray="3 2"/>
+          <path d="M 145 52 L 240 97" stroke-dasharray="3 2"/>
+          <path d="M 145 52 L 240 125" stroke-dasharray="3 2"/>
+        </g>
+        <text x="80" y="100" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A7674" stroke="none">stride 0</text>
+        <text x="80" y="114" font-family="JetBrains Mono, monospace" font-size="11" fill="#7A7674" stroke="none">on dim 0</text>
+        <!-- caption note -->
+        <text x="20" y="190" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">workers share the row, but only as readers — no race.</text>
+      </g>
+    </svg>
+    <figcaption>Figure 3.3 — broadcasting under parallelism. A length-3 row fans into a 4×3 output; four workers each handle one row of output. Reads of the shared row are safe; the same stride lookup runs once per worker.</figcaption>
+  </figure>
+
+  <h3>Sub-3.1.b — SIMD vectorization</h3>
+
+  <p>SIMD (single instruction, multiple data) means one CPU instruction
+  performs the same operation on multiple data lanes in parallel.
+  <code>vaddpd ymm0, ymm1, ymm2</code> on AVX2 adds four <code>f64</code>s to
+  another four <code>f64</code>s, producing four sums, in one cycle. The CPU
+  has had this since the 1990s; the compiler tries to use it on your behalf
+  when it can prove correctness. On a Rayon loop calling a generic
+  <code>impl Fn(f64) -&gt; f64</code> through a strided view, the proof fails,
+  and you get scalar instructions. The fix is to write SIMD explicitly.</p>
+
+  <aside class="callout">
+    <p class="label">Rust</p>
+    <p><code>std::simd</code> (the <code>portable_simd</code> feature) is
+    currently nightly. Per CLAUDE.md, advanced features get flagged.
+    Alternatives on stable: <a href="https://docs.rs/pulp"><code>pulp</code></a>
+    (macro-driven, runtime CPU dispatch) or <a href="https://docs.rs/wide"><code>wide</code></a>
+    (fixed lane widths). We pick <code>std::simd</code> because the
+    <code>Simd&lt;f64, N&gt;</code> type reads closest to the hardware level
+    and the lane-wise interface (load, op, op, op, store) is the cleanest
+    learning surface.</p>
+  </aside>
+
+  <p>Lanes per architecture — memorize this once:</p>
+
+  <table>
+    <thead>
+      <tr><th>Architecture</th><th>f64 lanes</th><th>Instruction family</th></tr>
+    </thead>
+    <tbody>
+      <tr><td>ARM NEON (M-series, ARM servers)</td><td>2</td><td><code>fmla v0.2d, v1.2d, v2.2d</code></td></tr>
+      <tr><td>x86 SSE2 (x86_64 baseline)</td><td>2</td><td><code>addpd</code>, <code>mulpd</code></td></tr>
+      <tr><td>x86 AVX2 (Haswell and later)</td><td>4</td><td><code>vaddpd ymm</code>, <code>vfmadd231pd</code></td></tr>
+      <tr><td>x86 AVX-512 (Skylake-X, Zen 4)</td><td>8</td><td><code>vaddpd zmm</code>, <code>vfmadd231pd zmm</code></td></tr>
+    </tbody>
+  </table>
+
+  <p>The vocabulary of <code>std::simd</code>:</p>
+
+  <ul>
+    <li><code>Simd&lt;f64, N&gt;</code> — N-lane SIMD register holding f64. <code>N</code> is a const generic; <code>2</code>, <code>4</code>, <code>8</code> are common.</li>
+    <li><code>Simd::from_slice(&amp;slice)</code> / <code>Simd::splat(scalar)</code> / <code>Simd::to_array()</code> — load, broadcast a scalar across lanes, unload.</li>
+    <li>Arithmetic operators (<code>+</code>, <code>*</code>) work lane-wise. <code>v1 + v2</code> on two <code>Simd&lt;f64, 4&gt;</code> is one instruction.</li>
+    <li><code>v.reduce_sum()</code>, <code>v.reduce_max()</code> — horizontal reductions across lanes. These are <em>not</em> single instructions; they expand to a tree.</li>
+  </ul>
+
+  <p>Here is the API surface in a 5-line idiom — summing <code>1..1000</code>,
+  no tensor anywhere:</p>
+
+<pre><code>use std::simd::{f64x4, num::SimdFloat};
+
+let xs: Vec&lt;f64&gt; = (1..=1000).map(|i| i as f64).collect();
+let chunks = xs.chunks_exact(4);
+let s: f64 = chunks.clone()
+    .map(|c| f64x4::from_slice(c).reduce_sum())
+    .sum();</code></pre>
+
+  <p>That is the loading-and-reducing shape, on unrelated data. It tells you
+  the API exists and what it looks like. Wiring it to a tensor's strided
+  storage, accounting for non-contiguous layouts, choosing a chunk width based
+  on the target CPU — that is the part you write.</p>
+
+  <aside class="callout">
+    <p class="label">SIMD</p>
+    <p>The trait wants <code>impl Fn(f64) -&gt; f64</code>. The SIMD inner loop
+    wants something that consumes a <code>Simd&lt;f64, N&gt;</code> and returns
+    a <code>Simd&lt;f64, N&gt;</code>. That mismatch is the central design
+    question of Sub-3.1.b: do you require the user to pass a SIMD-aware
+    closure (changing the trait), maintain two parallel function tables
+    (sigmoid_scalar vs sigmoid_simd), or auto-lift the scalar closure
+    lane-by-lane (cheap but defeats the point)? Don't pick blindly. The choice
+    affects every call site in <code>tensor.rs</code>.</p>
+  </aside>
+
+  <p>One inner-helper shape (you may structure it differently):</p>
+
+<pre><code>fn simd_map_inner&lt;const N: usize&gt;(
+    chunk: &amp;[f64],
+    out: &amp;mut [f64],
+    f: impl Fn(std::simd::Simd&lt;f64, N&gt;) -&gt; std::simd::Simd&lt;f64, N&gt;,
+) where
+    std::simd::LaneCount&lt;N&gt;: std::simd::SupportedLaneCount,
+{
+    unimplemented!()
+}</code></pre>
+
+  <p>The trait bound at the bottom is the compiler asking you to prove
+  <code>N</code> is a value <code>std::simd</code> actually supports (2, 4, 8,
+  16, 32, 64). Writing it once teaches the const-generics surface; after
+  that you copy-paste.</p>
+
+  <h3>Tail handling</h3>
+
+  <p>What about when <code>chunk.len() % N != 0</code>? Three options, each
+  with a trade-off:</p>
+
+  <ol>
+    <li><em>Masked load.</em> <code>std::simd</code> supports
+    <code>Mask&lt;_, N&gt;</code> for partial lanes. Cleanest, but takes a
+    small per-call cost; recommended once you have a working pipeline.</li>
+    <li><em>Scalar sweep.</em> Run the SIMD path on the full chunks, finish
+    the tail in scalar code. Two code paths to maintain, but the simplest to
+    write first.</li>
+    <li><em>Chunk pad.</em> Pad the input/output to a multiple of N with
+    identity values for the op. Wastes a little memory; risky for reduce if
+    the identity is wrong.</li>
+  </ol>
+
+  <p>Pick one consciously, document why in a comment. Don't paper over it
+  with a bug.</p>
+
+  <figure>
+    <svg viewBox="0 0 520 360" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Parallelism by vectorization grid.">
+      <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
+        <!-- axis labels -->
+        <text x="260" y="20" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">cores</text>
+        <text x="155" y="40" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">single</text>
+        <text x="385" y="40" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">multiple</text>
+        <g transform="translate(20, 200) rotate(-90)">
+          <text x="0" y="0" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">lanes</text>
+        </g>
+        <text x="40" y="115" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="end">scalar</text>
+        <text x="40" y="265" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="end">SIMD</text>
+        <!-- cell separators -->
+        <path d="M 260 50 L 260 340"/>
+        <path d="M 50 195 L 510 195"/>
+        <!-- top-left: scalar serial -->
+        <g transform="translate(80, 70)">
+          <text x="80" y="0" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">SimpleOps today</text>
+          <rect x="0" y="12" width="18" height="18"/>
+          <rect x="20" y="12" width="18" height="18"/>
+          <rect x="40" y="12" width="18" height="18"/>
+          <rect x="60" y="12" width="18" height="18"/>
+          <rect x="80" y="12" width="18" height="18"/>
+          <rect x="100" y="12" width="18" height="18"/>
+          <rect x="120" y="12" width="18" height="18"/>
+          <rect x="140" y="12" width="18" height="18"/>
+          <path d="M 9 50 L 9 70" stroke-width="2"/>
+          <path d="M 9 70 L 5 65 M 9 70 L 13 65"/>
+          <text x="80" y="92" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">1 arrow / 1 lane</text>
+        </g>
+        <!-- top-right: scalar parallel (Rayon alone) -->
+        <g transform="translate(310, 70)">
+          <text x="80" y="0" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">Rayon, no SIMD</text>
+          <rect x="0" y="12" width="18" height="18"/>
+          <rect x="20" y="12" width="18" height="18"/>
+          <rect x="40" y="12" width="18" height="18"/>
+          <rect x="60" y="12" width="18" height="18"/>
+          <rect x="80" y="12" width="18" height="18"/>
+          <rect x="100" y="12" width="18" height="18"/>
+          <rect x="120" y="12" width="18" height="18"/>
+          <rect x="140" y="12" width="18" height="18"/>
+          <path d="M 9 50 L 9 70" stroke-width="2"/>
+          <path d="M 9 70 L 5 65 M 9 70 L 13 65"/>
+          <path d="M 49 50 L 49 70" stroke-width="2"/>
+          <path d="M 49 70 L 45 65 M 49 70 L 53 65"/>
+          <path d="M 89 50 L 89 70" stroke-width="2"/>
+          <path d="M 89 70 L 85 65 M 89 70 L 93 65"/>
+          <path d="M 129 50 L 129 70" stroke-width="2"/>
+          <path d="M 129 70 L 125 65 M 129 70 L 133 65"/>
+          <text x="80" y="92" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">4 arrows / 1 lane each</text>
+        </g>
+        <!-- bottom-left: SIMD serial -->
+        <g transform="translate(80, 220)">
+          <text x="80" y="0" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">SIMD, single core</text>
+          <rect x="0" y="12" width="18" height="18"/>
+          <rect x="20" y="12" width="18" height="18"/>
+          <rect x="40" y="12" width="18" height="18"/>
+          <rect x="60" y="12" width="18" height="18"/>
+          <rect x="80" y="12" width="18" height="18"/>
+          <rect x="100" y="12" width="18" height="18"/>
+          <rect x="120" y="12" width="18" height="18"/>
+          <rect x="140" y="12" width="18" height="18"/>
+          <!-- one bracket arrow covering 4 cells -->
+          <path d="M 0 50 L 78 50" stroke-width="2.5"/>
+          <path d="M 39 50 L 39 70" stroke-width="2.5"/>
+          <path d="M 39 70 L 35 65 M 39 70 L 43 65"/>
+          <text x="80" y="92" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">1 arrow / 4 lanes</text>
+        </g>
+        <!-- bottom-right: Rayon + SIMD -->
+        <g transform="translate(310, 220)">
+          <text x="80" y="0" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">FastOps target</text>
+          <rect x="0" y="12" width="18" height="18"/>
+          <rect x="20" y="12" width="18" height="18"/>
+          <rect x="40" y="12" width="18" height="18"/>
+          <rect x="60" y="12" width="18" height="18"/>
+          <rect x="80" y="12" width="18" height="18"/>
+          <rect x="100" y="12" width="18" height="18"/>
+          <rect x="120" y="12" width="18" height="18"/>
+          <rect x="140" y="12" width="18" height="18"/>
+          <!-- four bracket arrows -->
+          <path d="M 0 50 L 38 50" stroke-width="2.5"/>
+          <path d="M 19 50 L 19 70" stroke-width="2.5"/>
+          <path d="M 19 70 L 15 65 M 19 70 L 23 65"/>
+          <path d="M 40 50 L 78 50" stroke-width="2.5"/>
+          <path d="M 59 50 L 59 70" stroke-width="2.5"/>
+          <path d="M 59 70 L 55 65 M 59 70 L 63 65"/>
+          <path d="M 80 50 L 118 50" stroke-width="2.5"/>
+          <path d="M 99 50 L 99 70" stroke-width="2.5"/>
+          <path d="M 99 70 L 95 65 M 99 70 L 103 65"/>
+          <path d="M 120 50 L 158 50" stroke-width="2.5"/>
+          <path d="M 139 50 L 139 70" stroke-width="2.5"/>
+          <path d="M 139 70 L 135 65 M 139 70 L 143 65"/>
+          <text x="80" y="92" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">4 arrows / 4 lanes each</text>
+        </g>
+      </g>
+    </svg>
+    <figcaption>Figure 3.7 — parallelism × vectorization. Two independent axes; Module 3 uses both. Bottom-right is the FastOps target — sixteen simultaneous f64 ops on a 4-core machine with 4-lane SIMD.</figcaption>
+  </figure>
+
+  <h3>Tests to write for Task 3.1</h3>
+
+  <p>The existing test suite (<code>tests/test_tensor_ops.rs</code>) already
+  exercises <code>SimpleOps</code> across maps, zips, reduces, broadcasts,
+  and matmul. The key insight: every test should run against
+  <em>any</em> backend. Make the test generic over the ops type:</p>
+
+<pre><code>fn assert_cross_backend_map() {
+    let a = TensorData::new((0..12).map(|i| i as f64).collect(), vec![3, 4]);
+    let simple = SimpleOps::map(&amp;a, |x| x * 2.0 + 1.0);
+    let fast = FastOps::map(&amp;a, |x| x * 2.0 + 1.0);
+    assert_eq!(simple.storage.as_ref(), fast.storage.as_ref());
+}</code></pre>
+
+  <p>Specific cases to cover:</p>
+
+  <ul>
+    <li><strong>Non-contiguous transposed tensor.</strong> Take <code>[3, 4]</code>,
+    permute to <code>[4, 3]</code> via stride manipulation (no copy), then
+    run <code>map(|x| x * 2.0 + 1.0)</code>. <code>FastOps</code> must produce
+    the same result as <code>SimpleOps</code>. This is the test that catches
+    "I assumed contiguous storage."</li>
+    <li><strong>Reduce on each axis.</strong> <code>[3, 4]</code> with sum-reduce
+    on dim 0 and dim 1, both with <code>keep_dims=true</code> and
+    <code>false</code>. Equivalence to <code>SimpleOps</code>.</li>
+    <li><strong>Broadcasting zip.</strong> <code>[4, 3] + [3]</code> (stride-0
+    broadcast). The shape arithmetic and the result must match.</li>
+    <li><strong>SIMD bit-exact.</strong> Sigmoid map on a fixed-seed
+    <code>[1024]</code> tensor — scalar and SIMD must agree to the last bit.
+    Sigmoid is bit-stable under SIMD because it does not reorder additions
+    across lanes; each lane is independent.</li>
+    <li><strong>SIMD approximate.</strong> Sum-reduce on <code>[10_000]</code> —
+    SIMD reorders the sum lane-wise (lane 0 + lane 4 + lane 8... ≠
+    sum-from-left). Assert agreement within <code>f64::EPSILON * size * 8</code>
+    or similar. The fact that bit-exactness fails here is part of the lesson:
+    associativity in floating-point is not free.</li>
+  </ul>
+</section>
+
+<hr class="rule">
+
+<section id="task-32">
+  <p class="eyebrow">Task 3.2</p>
+  <h2>Parallel fused matmul (CPU)</h2>
+
+  <p>Matmul cannot be cleanly written as
+  <code>reduce(zip(broadcast(a), broadcast(b)))</code>. You could write that
+  composition — it would even produce the right answer — but it would allocate
+  an <code>(m, k, n)</code>-shaped intermediate that defeats the purpose. You
+  write a dedicated kernel that fuses the broadcast, the elementwise multiply,
+  and the reduce into one pass with one allocation (the output).</p>
+
+  <p>Look at the naive 2D version in <code>src/tensor_ops.rs</code> lines
+  220–225. The loop order is <code>i, p, j</code>. That ordering is not
+  arbitrary: with <code>j</code> innermost, all three operands stream
+  contiguously in the hot loop — <code>a[i, p]</code> is fixed,
+  <code>b[p, j]</code> walks row-major (stride 1), and <code>out[i, j]</code>
+  walks row-major (stride 1). The alternative <code>i, j, p</code> would walk
+  <code>b</code> down a column (stride <code>n</code>) and thrash the cache;
+  that contiguity is the whole reason <code>i, p, j</code> wins. The classic
+  high-performance matmul (BLIS, OpenBLAS, MKL) goes much further with blocked
+  loop nests and a hand-tuned micro-kernel.</p>
+
+  <aside class="callout">
+    <p class="label">Why</p>
+    <p>The innermost loop walks <code>j</code>, and that is the dimension SIMD
+    vectorizes — not the <code>p</code>/<code>k</code> reduction. The shape is a
+    fused multiply-add (FMA): broadcast the single scalar <code>a[i, p]</code>
+    into every lane, load a contiguous run of <code>b[p, j..]</code> (the
+    stride-1 access from above), and accumulate into a vector of
+    <code>c[i, j..]</code> — no horizontal sum. On AVX2 that is
+    <code>vfmadd231pd</code>; on NEON it is
+    <code>fmla v0.2d, v1.2d, v2.2d</code>. Vectorizing the <code>k</code>
+    reduction instead would force a horizontal <code>reduce_sum</code> per
+    output cell — the slow shape BLIS and OpenBLAS specifically avoid. This is
+    why matmul gets most of the CPU peak; the rest of the work — index
+    arithmetic, cache management — exists to keep that FMA fed.</p>
+  </aside>
+
+  <p>The choice of parallel axis is straightforward: parallelize over the
+  outer rows (and over batch dimensions, if any). Each worker writes to a
+  disjoint range of output rows; no contention. The <code>k</code> reduction
+  stays serial inside each worker (each step accumulates into the same output
+  cells), and SIMD runs across the output columns <code>j</code> — the
+  contiguous dimension — not across <code>k</code>.</p>
+
+  <p>Reference reading — read, don't copy:</p>
+
+  <ul>
+    <li><a href="https://github.com/flame/blis">BLIS</a> — the cleanest
+    explanation of the blocked matmul algorithm in print. Their micro-kernel
+    documentation is a half-day read; worth it.</li>
+    <li><a href="https://github.com/OpenMathLib/OpenBLAS">OpenBLAS</a>
+    <code>kernel/x86_64/dgemm_kernel_*.S</code> — hand-tuned assembly per
+    micro-architecture. You will not write this. You will understand why it
+    exists.</li>
+    <li><a href="https://salykova.github.io/matmul-cpu">Aman Salykov's matmul
+    tutorial</a> — the most accessible walk-through of "naive → fast" matmul
+    in C with measurements.</li>
+  </ul>
+
+  <p>Stub for Task 3.2:</p>
+
+<pre><code>impl TensorOps for FastOps {
+    fn matmul(a: &amp;TensorData, b: &amp;TensorData) -&gt; TensorData {
+        unimplemented!()
+    }
+}</code></pre>
+
+  <h3>Hand-checkable fixture</h3>
+
+  <p>Before trusting your kernel, verify on something you can trace on
+  paper:</p>
+
+<pre><code>let a = [[1.0, 2.0, 3.0],
+         [4.0, 5.0, 6.0]];          // shape [2, 3]
+
+let b = [[1.0, 0.0, 1.0, 0.0],
+         [0.0, 1.0, 0.0, 1.0],
+         [1.0, 1.0, 1.0, 1.0]];     // shape [3, 4]
+
+// expected:
+let c = [[4.0, 5.0, 4.0, 5.0],
+         [10.0, 11.0, 10.0, 11.0]]; // shape [2, 4]</code></pre>
+
+  <p>Trace one cell on paper: <code>c[0][0] = 1*1 + 2*0 + 3*1 = 4</code>. If
+  your kernel produces 1 you kept only the first term, 3 only the last — an
+  accumulation bug in the <code>k</code> loop. But <code>c[0][0]</code> alone
+  won't catch a transposed <code>B</code>: this <code>b</code>'s column 0 and
+  row 0 are both <code>[1, 0, 1]</code>, so reading <code>b</code> transposed
+  still gives 4. Check <code>c[0][1]</code> for that — the correct 5 becomes 2
+  under a transpose. Catching either on a 2×3·3×4 takes a minute; catching it
+  on a 1024×1024 takes a debugger.</p>
+</section>
+
+<hr class="rule">
+
+<section id="task-33">
+  <p class="eyebrow">Task 3.3</p>
+  <h2>GPU map / zip / reduce (cudarc + NVRTC)</h2>
+
+  <p>Now the framework gets a co-processor. The Rust host code stays on
+  macOS; the kernels run on whatever NVIDIA GPU you point Colab at (A100,
+  H100, T4). cudarc gives you safe Rust bindings to the CUDA driver API;
+  NVRTC compiles kernels from source strings at runtime, so you can iterate
+  on <code>.cu</code> files without rebuilding the Rust side.</p>
+
+  <h3>The CUDA execution model in one diagram</h3>
+
+  <p>A CUDA launch takes a <em>grid</em> of <em>thread blocks</em>. Each block
+  contains many <em>threads</em>. The hardware groups threads into
+  <em>warps</em> of 32, executes each warp in lock-step on one streaming
+  multiprocessor (SM), and uses block-level shared memory for cooperation
+  between threads in the same block. Across blocks, no shared state, no
+  synchronization (without atomics or a second kernel launch).</p>
+
+  <figure>
+    <svg viewBox="0 0 520 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="CUDA thread grid geometry.">
+      <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
+        <text x="20" y="20" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">grid</text>
+        <text x="20" y="34" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">gridDim.x = 3</text>
+        <text x="20" y="46" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">gridDim.y = 2</text>
+        <!-- grid of 3x2 blocks -->
+        <g transform="translate(140, 30)">
+          <!-- block (0,0) - normal -->
+          <rect x="0" y="0" width="100" height="80"/>
+          <!-- block (1,0) - HIGHLIGHTED -->
+          <rect x="106" y="0" width="100" height="80" stroke-width="2.5"/>
+          <!-- block (2,0) -->
+          <rect x="212" y="0" width="100" height="80"/>
+          <!-- block (0,1) -->
+          <rect x="0" y="86" width="100" height="80"/>
+          <!-- block (1,1) -->
+          <rect x="106" y="86" width="100" height="80"/>
+          <!-- block (2,1) -->
+          <rect x="212" y="86" width="100" height="80"/>
+          <!-- threads inside highlighted block: 4x4 grid of dots -->
+          <g transform="translate(106, 0)">
+            <circle cx="18" cy="14" r="2"/>
+            <circle cx="38" cy="14" r="2"/>
+            <circle cx="58" cy="14" r="2"/>
+            <circle cx="78" cy="14" r="2"/>
+            <circle cx="18" cy="32" r="2"/>
+            <circle cx="38" cy="32" r="2"/>
+            <circle cx="58" cy="32" r="2"/>
+            <circle cx="78" cy="32" r="2"/>
+            <circle cx="18" cy="50" r="2"/>
+            <circle cx="38" cy="50" r="2"/>
+            <circle cx="58" cy="50" r="2"/>
+            <circle cx="78" cy="50" r="2"/>
+            <circle cx="18" cy="68" r="2"/>
+            <circle cx="38" cy="68" r="2"/>
+            <circle cx="58" cy="68" r="2" stroke-width="2.5"/>
+            <circle cx="78" cy="68" r="2"/>
+          </g>
+        </g>
+        <!-- callouts -->
+        <g transform="translate(0, 195)">
+          <path d="M 200 -90 L 200 -70 L 130 -70 L 130 -50" />
+          <text x="20" y="-50" font-family="JetBrains Mono, monospace" font-size="10" fill="#1B1B1B" stroke="none">block (blockIdx.x, blockIdx.y)</text>
+          <text x="20" y="-36" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">blockDim.x, blockDim.y threads</text>
+        </g>
+        <g transform="translate(0, 245)">
+          <path d="M 270 -65 L 320 -65 L 320 -40 L 360 -40"/>
+          <text x="370" y="-37" font-family="JetBrains Mono, monospace" font-size="10" fill="#1B1B1B" stroke="none">thread</text>
+          <text x="370" y="-23" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">(threadIdx.x, threadIdx.y)</text>
+        </g>
+      </g>
+    </svg>
+    <figcaption>Figure 3.4 — CUDA thread grid geometry. A 3×2 grid of blocks; one block contains a 4×4 thread layout. The host launches with grid and block dimensions; the kernel reads its location from <code>blockIdx</code>, <code>blockDim</code>, <code>threadIdx</code>.</figcaption>
+  </figure>
+
+  <h3>CUDA C primer</h3>
+
+  <p>CUDA C is C++ with three extra ideas. You answered "first time touching
+  shaders" — CUDA C is shader-adjacent but explicit about which code runs
+  where. The vocabulary, in 5 lines on unrelated data:</p>
+
+<pre><code>__global__ void bump(int *xs, int n) {
+    int i = blockIdx.x * blockDim.x + threadIdx.x;
+    if (i &lt; n) xs[i] = xs[i] + 1;
+}</code></pre>
+
+  <p>The <code>__global__</code> qualifier means "callable from host, runs on
+  device, returns void." That qualifier is the boundary. The first line of
+  the body — the global thread index — is the canonical "where am I" formula.
+  Every kernel starts with some version of this. The bounds check guards the
+  tail when <code>n</code> is not a multiple of <code>blockDim.x</code>. The
+  host invokes with triple-bracket launch syntax:</p>
+
+<pre><code>bump&lt;&lt;&lt;grid, block&gt;&gt;&gt;(xs, n);</code></pre>
+
+  <p>Other qualifiers you will meet:
+  <code>__device__</code> (callable from device, runs on device — for helper
+  functions), <code>__host__</code> (the default for unqualified C++ code),
+  <code>__shared__</code> (memory shared within a block — fast, small),
+  <code>__constant__</code> (read-only global, cached on the SM). Module 3.4
+  uses <code>__shared__</code> heavily.</p>
+
+  <aside class="callout">
+    <p class="label">CUDA</p>
+    <p>The trait closure <code>impl Fn(f64) -&gt; f64</code> lives on the host
+    Rust side. You cannot ship a closure into a kernel. Workaround: the host
+    picks a <em>named</em> kernel (<code>map_sigmoid</code>, <code>map_relu</code>,
+    <code>zip_add</code>, ...) and launches it. The "closure" lives in the
+    host's choice of name, not in the kernel body. This is one of the
+    design choices Module 3 forces; there is no clever auto-generation
+    around it.</p>
+  </aside>
+
+  <h3>cudarc and NVRTC plumbing</h3>
+
+  <p>cudarc device setup, buffer allocation, kernel launch wrappers — these
+  are AI-free-speed boilerplate per CLAUDE.md. The host-side surface lives in
+  <code>src/cuda_ops/mod.rs</code>:</p>
+
+<pre><code>pub struct CudaOps;
+
+impl TensorOps for CudaOps {
+    fn map(input: &amp;TensorData, f: impl Fn(f64) -&gt; f64) -&gt; TensorData {
+        unimplemented!()
+    }
+    fn zip(a: &amp;TensorData, b: &amp;TensorData,
+           f: impl Fn(f64, f64) -&gt; f64) -&gt; TensorData {
+        unimplemented!()
+    }
+    fn reduce(input: &amp;TensorData, f: impl Fn(f64, f64) -&gt; f64,
+              init: f64, dim: usize, keep_dims: bool) -&gt; TensorData {
+        unimplemented!()
+    }
+    fn matmul(a: &amp;TensorData, b: &amp;TensorData) -&gt; TensorData {
+        unimplemented!()
+    }
+}
+
+#[repr(C)]
+pub struct KernelArgs {
+    // shape, strides, storage_offset, total size
+    // exact layout: you decide, matching the kernel's
+    // expectation byte-for-byte
+}
+
+pub fn launch_map(/* device, kernel_name, args, grid, block */)
+    -&gt; Result&lt;(), CudaError&gt;
+{
+    unimplemented!()
+}</code></pre>
+
+  <aside class="callout">
+    <p class="label">Rust</p>
+    <p><code>#[repr(C)]</code> tells the Rust compiler to lay out the struct
+    the way a C compiler would — predictable field order, no reordering for
+    packing. That matters when the struct crosses the CPU/GPU boundary; the
+    CUDA C side reads exactly those bytes in that order. If you forget
+    <code>#[repr(C)]</code>, the Rust compiler is free to reorder fields, and
+    your kernel sees garbage. The compiler will not warn.</p>
+  </aside>
+
+  <p>The metadata struct (shape, strides, storage offset) is how the kernel
+  navigates a non-contiguous tensor view. The same struct shape your CPU
+  backend uses, serialized to the GPU. See <code>src/tensor_data.rs</code> for
+  the host-side layout.</p>
+
+  <h3>Reduce — cadence only</h3>
+
+  <p>Reduce on a GPU is more interesting than reduce on a CPU because the
+  hardware structure invites a tree. One output, many threads all wanting to
+  add into it: a naive per-thread <code>out += x</code> serializes on the
+  write. The fix uses the one thing a block has that a CPU core doesn't —
+  <code>blockDim.x</code> threads sharing fast <code>__shared__</code> memory
+  and a barrier. Stage the block's slice into a <code>__shared__</code>
+  array, then combine in parallel so the work halves each round: log-depth
+  instead of linear. Across blocks, you either launch a second kernel to
+  combine the partials or use <code>atomicAdd</code> on a single output
+  slot.</p>
+
+  <p>That is the cadence. The decisions are yours, and they are where the
+  lesson lives: which threads stay live each round and how a thread finds the
+  element it combines with (the obvious modulo answer is also the slow one),
+  where the barrier goes and what races without it, the off-by-one when
+  <code>blockDim.x</code> is not a power of two. The canonical NVIDIA
+  reference (Mark Harris, "Optimizing Parallel Reduction in CUDA") presents
+  seven progressively faster versions of the same kernel, each fixing the
+  last one's bottleneck. Read it <em>after</em> you have a working version
+  one to compare against.</p>
+
+  <h3>Tests for Task 3.3</h3>
+
+  <p>Same shape as Task 3.1's tests: the existing suite must pass against
+  <code>CudaOps</code> too. Gate behind a feature flag because the CUDA
+  toolkit is not installed on macOS by default:</p>
+
+<pre><code>#[cfg(feature = "cuda")]
+#[test]
+fn cuda_map_matches_simple() {
+    // same fixture as fast_map_matches_simple,
+    // backend swapped, asserts identical or
+    // within EPSILON depending on the op
+}</code></pre>
+</section>
+
+<hr class="rule">
+
+<section id="task-34">
+  <p class="eyebrow">Task 3.4</p>
+  <h2>CUDA tiled matmul</h2>
+
+  <p>This is the section the whole module is pointed at. Naive matmul on the
+  GPU loads every element of A and every element of B from global memory for
+  every output element it computes. Global memory is slow. Tiled matmul caches
+  small <code>TILE × TILE</code> sub-blocks of A and B in
+  <code>__shared__</code> memory (block-local, fast, ~100 KB per SM) and reuses
+  those cached tiles across <code>TILE</code> output elements. The result is
+  the difference between bandwidth-bound and compute-bound.</p>
+
+  <h3>Memory hierarchy</h3>
+
+  <p>To write a tiled matmul you carry a mental model of the GPU's memory
+  hierarchy. Slowest and largest is global device memory (the HBM stack on an
+  A100, ~40 GB, ~1.5 TB/s). One level up is the L2 cache shared across the
+  whole chip. One level up from that is <code>__shared__</code> memory, per
+  block (~100 KB on a modern SM, ~10 TB/s effective). At the top are registers,
+  per thread (about 256 32-bit registers). A warp running on an SM coordinates
+  reads from <code>__shared__</code> and writes to registers; reads from
+  global are batched into 32-thread transactions when the addresses align
+  (coalescing).</p>
+
+  <figure>
+    <svg viewBox="0 0 520 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Shared memory as cache with warp and L2 lanes.">
+      <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
+        <!-- global memory: wide, slow -->
+        <rect x="20" y="30" width="480" height="40"/>
+        <text x="260" y="55" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">global device memory (HBM, big, slow)</text>
+        <!-- L2 -->
+        <rect x="100" y="90" width="320" height="32"/>
+        <text x="260" y="111" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">L2 cache (chip-wide)</text>
+        <!-- shared memory: narrower, faster -->
+        <rect x="160" y="140" width="200" height="32"/>
+        <text x="260" y="161" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">__shared__ (per block, fast)</text>
+        <!-- registers -->
+        <rect x="220" y="190" width="80" height="28"/>
+        <text x="260" y="208" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">registers</text>
+        <!-- warp lane label -->
+        <g transform="translate(380, 195)">
+          <text x="0" y="0" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">warp = 32 threads</text>
+          <text x="0" y="14" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">lock-step on one SM</text>
+        </g>
+        <!-- arrows up: one round-trip per tile -->
+        <path d="M 80 70 L 80 90"/>
+        <path d="M 80 90 L 76 86 M 80 90 L 84 86"/>
+        <path d="M 80 122 L 80 140"/>
+        <path d="M 80 140 L 76 136 M 80 140 L 84 136"/>
+        <path d="M 80 172 L 80 190"/>
+        <path d="M 80 190 L 76 186 M 80 190 L 84 186"/>
+        <!-- speed labels on the right -->
+        <text x="440" y="60" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">slow</text>
+        <text x="440" y="111" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">~10×</text>
+        <text x="440" y="161" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">~100×</text>
+        <text x="440" y="208" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">fastest</text>
+        <!-- bandwidth note -->
+        <text x="20" y="245" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none">tile load = one round-trip global → shared per TILE × TILE block.</text>
+      </g>
+    </svg>
+    <figcaption>Figure 3.5 — shared memory as cache. Four levels, slowest to fastest: global, L2, <code>__shared__</code>, registers. A tile load brings <code>TILE × TILE</code> elements through L2 into <code>__shared__</code>; from there the block reuses them across many output elements before going back for the next tile.</figcaption>
+  </figure>
+
+  <h3>The 4-step rhythm</h3>
+
+  <p>The tiled matmul does the same four-step rhythm <code>K / TILE</code>
+  times — once per tile pair down the K dimension. Burn this rhythm into
+  muscle memory; the indexing follows from it.</p>
+
+  <ol>
+    <li><strong>Load.</strong> Each thread in the block loads one element of
+    A's current tile and one element of B's current tile from global into the
+    block's two <code>__shared__</code> buffers. The block of
+    <code>TILE × TILE</code> threads cooperates to fill two
+    <code>TILE × TILE</code> tiles.</li>
+    <li><strong>Sync.</strong> <code>__syncthreads()</code>. Wait until every
+    thread in the block has finished writing its slot. Without this barrier,
+    the next step reads positions other threads have not written.</li>
+    <li><strong>Compute.</strong> Each thread reads <code>TILE</code> values
+    from each shared tile and accumulates <code>TILE</code> multiply-adds into
+    a register holding its piece of the output.</li>
+    <li><strong>Sync.</strong> <code>__syncthreads()</code> again. Wait until
+    every thread has finished reading from the shared tiles. Without this
+    barrier, some thread starts overwriting a tile while another thread is
+    still reading.</li>
+  </ol>
+
+  <p>Then repeat with the next tile pair. After <code>K / TILE</code>
+  iterations, write the accumulator to the output. Once.</p>
+
+  <figure>
+    <svg viewBox="0 0 560 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Tile loading and barrier rhythm.">
+      <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
+        <!-- time axis -->
+        <path d="M 30 180 L 540 180"/>
+        <path d="M 540 180 L 533 176 M 540 180 L 533 184"/>
+        <text x="540" y="200" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="end">time</text>
+        <!-- iteration 1 -->
+        <text x="100" y="30" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">tile 0</text>
+        <rect x="40" y="50" width="80" height="60"/>
+        <text x="80" y="76" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">LOAD</text>
+        <text x="80" y="92" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">global → shared</text>
+        <!-- sync bar -->
+        <path d="M 130 50 L 130 130" stroke-width="2.5"/>
+        <text x="148" y="76" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none">__sync</text>
+        <text x="148" y="90" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none">threads()</text>
+        <rect x="200" y="50" width="80" height="60"/>
+        <text x="240" y="76" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">COMPUTE</text>
+        <text x="240" y="92" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">accumulate</text>
+        <path d="M 290 50 L 290 130" stroke-width="2.5"/>
+        <text x="308" y="76" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none">__sync</text>
+        <text x="308" y="90" font-family="JetBrains Mono, monospace" font-size="10" fill="#1F3A5F" stroke="none">threads()</text>
+        <!-- iteration 2 -->
+        <text x="420" y="30" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">tile 1</text>
+        <rect x="360" y="50" width="80" height="60"/>
+        <text x="400" y="76" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">LOAD</text>
+        <path d="M 450 50 L 450 130" stroke-width="2.5"/>
+        <rect x="460" y="50" width="60" height="60"/>
+        <text x="490" y="76" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">COMP.</text>
+        <!-- repeat ellipsis -->
+        <text x="280" y="160" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">repeats K / TILE times</text>
+      </g>
+    </svg>
+    <figcaption>Figure 3.6 — tile loading and barrier rhythm. Each tile pair runs LOAD, sync, COMPUTE, sync. The two syncs are not the same sync — see callout below.</figcaption>
+  </figure>
+
+  <aside class="callout">
+    <p class="label">Why</p>
+    <p>Why two <code>__syncthreads()</code>? The first guards against the
+    next thread reading a tile slot before its peer wrote it. The second
+    guards against the next iteration overwriting a tile slot before its
+    peer finished reading it. Different threads, different bug, same
+    barrier API. This is one of the canonical interview-style "do you
+    really understand parallel execution" questions; rehearse the answer.</p>
+  </aside>
+
+  <p>The kernel skeleton — empty body, the same way the host-side trait
+  methods are empty:</p>
+
+<pre><code>__global__ void matmul_tiled(const float *A,
+                             const float *B,
+                             float *C,
+                             int M, int N, int K) {
+    __shared__ float a_tile[TILE][TILE];
+    __shared__ float b_tile[TILE][TILE];
+    // your indexing, your loop, your accumulator.
+}</code></pre>
+
+  <p>That is all you get in the doc. The indexing — which thread reads which
+  element of A, how the tile loop walks K, where the accumulator lives, when
+  exactly to write to C — is the lesson. Internet searches will return the
+  finished version; that is your decision to make.</p>
+
+  <h3>Hardware concepts — one paragraph each</h3>
+
+  <p><strong>Warp.</strong> 32 threads in lock-step on one SM. Every CUDA
+  instruction issues to a whole warp at a time. If 16 threads in a warp take
+  an <code>if</code> branch and 16 take the <code>else</code>, the warp
+  executes both paths back-to-back with half the threads masked off in each.
+  This is <em>branch divergence</em>, and it is a 2× slowdown. Tiled matmul
+  has no divergence in the inner loop, which is part of why it's fast.</p>
+
+  <p><strong>Memory coalescing.</strong> When 32 consecutive threads (one
+  warp) read 32 consecutive addresses, the hardware merges them into one
+  transaction. Strided or misaligned addresses fan out into many transactions;
+  a same-address broadcast (all 32 lanes reading one address) still coalesces
+  to one. Coalesced loads of A's tile are why thread layout in the block
+  matters; you want <code>threadIdx.x</code>-adjacent threads to read
+  <code>address</code>-adjacent A elements.</p>
+
+  <p><strong>Bank conflicts.</strong> <code>__shared__</code> memory is
+  organized into 32 banks (one per warp lane), addressed by
+  <code>addr % 32</code>. When two lanes in a warp hit different addresses in
+  the same bank, the access serializes. The classic workaround for
+  square-tile shared arrays is to pad by one column:
+  <code>__shared__ float a_tile[TILE][TILE + 1]</code>. You will not need
+  this on version one; revisit when you're profiling.</p>
+
+  <p><strong>Occupancy.</strong> Active warps per SM divided by maximum warps
+  per SM. Higher occupancy gives the scheduler more warps to switch between
+  when one stalls on memory, hiding latency. Occupancy is bounded by registers
+  per thread, <code>__shared__</code> memory per block, and block size. Tune
+  occupancy after the kernel works; profile with Nsight Compute on Colab —
+  that is AI-free-speed exploration, not a graded task.</p>
+
+  <aside class="callout">
+    <p class="label">Concept</p>
+    <p>The two CPU-side equivalents to remember: a warp is a CPU's SIMD
+    register (lock-step lanes); a block is a Rayon worker (cooperating
+    threads with local state). The grid is the whole job. CUDA names give
+    different vocabulary to the same hierarchy — see the cheat sheet in
+    Section 7.</p>
+  </aside>
+</section>
+
+<hr class="rule">
+
+<section id="task-35">
+  <p class="eyebrow">Task 3.5</p>
+  <h2>Wiring, verification, benchmarks</h2>
+
+  <p>You now have three backends: <code>SimpleOps</code> (from Module 2),
+  <code>FastOps</code> (Task 3.1, 3.2), <code>CudaOps</code> (Task 3.3, 3.4).
+  The user-facing <code>Tensor</code> needs to know which one to call.
+  Two shapes of backend dispatch; pick one consciously.</p>
+
+  <h3>Type alias</h3>
+
+<pre><code>pub type Backend = FastOps;
+
+// elsewhere:
+let out = Backend::map(&amp;input, |x| x.max(0.0));</code></pre>
+
+  <p>Change one line, rebuild, the whole framework runs on a different
+  backend. Simple, zero overhead, no monomorphization explosion.
+  Disadvantage: you cannot switch backends at runtime, or use two backends
+  in the same binary.</p>
+
+  <h3>Trait-generic dispatch</h3>
+
+<pre><code>pub fn train&lt;B: TensorOps&gt;(/* ... */) {
+    unimplemented!()
+}</code></pre>
+
+  <p>Every function that touches ops becomes generic over <code>B</code>.
+  Powerful, but the trait-bound clutter and the monomorphization cost are
+  real, and Module 3 has no runtime use case for it. Module 8 (multi-device
+  training) would justify it. Until then, the type alias is the right
+  choice.</p>
+
+  <aside class="callout">
+    <p class="label">Rust</p>
+    <p>The CUDA backend gates behind a Cargo feature — cudarc requires the
+    CUDA Toolkit at build time, which is not on macOS by default:</p>
+  </aside>
+
+<pre><code>[features]
+cuda = ["cudarc"]
+
+[dependencies]
+cudarc = { version = "0.11", optional = true }</code></pre>
+
+<pre><code>#[cfg(feature = "cuda")]
+pub mod cuda_ops;
+
+#[cfg(feature = "cuda")]
+pub type Backend = cuda_ops::CudaOps;
+
+#[cfg(not(feature = "cuda"))]
+pub type Backend = fast_ops::FastOps;</code></pre>
+
+  <h3>Run the existing test suite against every backend</h3>
+
+  <p>The tests in <code>tests/test_tensor_ops.rs</code>,
+  <code>tests/test_tensor.rs</code>, and <code>tests/test_backward.rs</code>
+  do not change. Add a parameterized layer that picks the backend, or
+  duplicate the test fixtures and let <code>#[cfg]</code> select. The CUDA
+  tests gate behind <code>#[cfg(feature = "cuda")]</code> so they run on
+  Colab and skip on local macOS.</p>
+
+  <h3>Benchmarks</h3>
+
+  <p>Criterion harness — AI-free-speed boilerplate, not the lesson. The
+  comparison you build: naive CPU → Rayon → Rayon + SIMD → CUDA, on three
+  representative workloads (element-wise million floats, reduce million
+  floats, matmul 1024×1024). <strong>No baseline speedup numbers belong in
+  the doc.</strong> You measure on your machine cold, you record, the
+  gap is the lesson.</p>
+
+  <h3>Sub-3.5.a — Did SIMD actually emit?</h3>
+
+  <p>Rust gives you no compile-time guarantee that your <code>std::simd</code>
+  calls lowered to vector instructions. The closure might have been opaque
+  enough that LLVM gave up; the target CPU flags might not have enabled
+  AVX-512; the auto-vectorizer might have inserted scalar fallback. You
+  have to verify. Four tools the doc names; you run them yourself.</p>
+
+  <h4>1. cargo-show-asm</h4>
+
+  <p>Dumps the emitted assembly for a function with Rust source interleaved.
+  Read for vector instruction names: <code>vfmadd231pd</code> or
+  <code>vaddpd</code> (AVX), <code>fmla v0.2d, v1.2d, v2.2d</code> (NEON).
+  If you see <code>vaddsd</code> (scalar double) in your inner loop, SIMD
+  did not emit.</p>
+
+<pre><code>cargo install cargo-show-asm
+
+cargo asm --rust --release 'minitorch_rs::fast_ops::FastOps::map'</code></pre>
+
+  <p>No <code>--target-cpu</code> means it inspects the host build: on your
+  Mac that's NEON, so look for <code>fmla</code>. To inspect an x86 target
+  instead, append <code>--target-cpu=haswell</code> and look for
+  <code>vfmadd231pd</code>.</p>
+
+  <h4>2. LLVM optimization remarks</h4>
+
+  <p>LLVM emits diagnostic remarks naming which loops vectorized and which
+  did not, with reasons ("could not determine size of loop",
+  "unvectorizable instruction"). One Rustflags incantation:</p>
+
+<pre><code>RUSTFLAGS="-C llvm-args=-pass-remarks=loop-vectorize \
+           -C llvm-args=-pass-remarks-missed=loop-vectorize" \
+    cargo build --release</code></pre>
+
+  <p>Voluminous output. Grep for the function name you care about.</p>
+
+  <h4>3. Compiler Explorer (godbolt.org)</h4>
+
+  <p>For single-function checks, paste the function into
+  <a href="https://rust.godbolt.org">rust.godbolt.org</a>, pick a Rust nightly
+  compiler, set <code>-C opt-level=3 -C target-cpu=skylake-avx512</code>, read
+  the right pane. Useful when you want to compare two implementations
+  side by side without rebuilding.</p>
+
+  <h4>4. Criterion deltas</h4>
+
+  <p>The SIMD path should benchmark 2-8× faster than the scalar path on
+  element-wise ops (close to the lane count, minus loop overhead). If the
+  delta is &lt; 1.5×, something is wrong: SIMD didn't emit, or the loop is
+  memory-bound, or the workload is too small to amortize per-call setup.
+  This is the cheapest end-to-end check; run it first.</p>
+
+  <h3>RUSTFLAGS reference</h3>
+
+  <p>These <code>target-cpu</code> names are x86-only and apply on x86 hosts
+  (Colab, Intel): the default x86_64 baseline is SSE2, so you opt into AVX2 or
+  AVX-512 explicitly. On your Apple Silicon Mac, NEON is already on by default
+  — use <code>apple-m1</code> or <code>native</code> to confirm it. A
+  <code>target-cpu</code> rustc doesn't recognize for the host is silently
+  ignored (it warns, then builds), so a green build is <em>not</em> proof the
+  wider instructions emitted:</p>
+
+<pre><code>RUSTFLAGS="-C target-cpu=haswell" cargo build --release          # AVX2  (x86)
+RUSTFLAGS="-C target-cpu=skylake-avx512" cargo build --release   # AVX-512 (x86)
+RUSTFLAGS="-C target-cpu=apple-m1" cargo build --release         # NEON  (Apple Silicon)
+RUSTFLAGS="-C target-cpu=native" cargo build --release           # whatever this box has</code></pre>
+
+  <p>On Colab, check what the instance supports:</p>
+
+<pre><code>grep -o 'avx[0-9a-z]*' /proc/cpuinfo | sort -u</code></pre>
+
+  <p>An A100 host typically has AVX-512; a T4 host may not. Different
+  baseline lane count for the same Rust code on the same backend.</p>
+
+  <h3>Cheat sheet — CUDA vs Rayon vs std::simd</h3>
+
+  <p>Four columns of vocabulary for the same underlying ideas. Memorize
+  the row, not the entry — the row is the concept, the entries are dialect.</p>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Concept</th>
+        <th>CUDA</th>
+        <th>Rayon</th>
+        <th><code>std::simd</code></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td>Work unit</td>
+        <td><code>thread</code></td>
+        <td>task on worker</td>
+        <td>lane in a vector</td>
+      </tr>
+      <tr>
+        <td>Work group</td>
+        <td>thread block</td>
+        <td><code>rayon::scope</code> / par chunk</td>
+        <td>one <code>Simd&lt;f64, N&gt;</code></td>
+      </tr>
+      <tr>
+        <td>Total job</td>
+        <td>grid</td>
+        <td>the <code>par_iter</code> source</td>
+        <td>the chunk loop</td>
+      </tr>
+      <tr>
+        <td>Index of self</td>
+        <td><code>blockIdx + threadIdx</code></td>
+        <td>iterator element</td>
+        <td>lane index <code>0..N</code></td>
+      </tr>
+      <tr>
+        <td>Sync within group</td>
+        <td><code>__syncthreads()</code></td>
+        <td>fold-then-reduce join</td>
+        <td>no equivalent (in-register)</td>
+      </tr>
+      <tr>
+        <td>Shared fast memory</td>
+        <td><code>__shared__</code> per block</td>
+        <td>thread-local accumulator</td>
+        <td>the SIMD register itself</td>
+      </tr>
+      <tr>
+        <td>Reduce idiom</td>
+        <td>tree reduce in shared</td>
+        <td><code>.fold(...).reduce(...)</code></td>
+        <td><code>Simd::reduce_sum()</code></td>
+      </tr>
+      <tr>
+        <td>Failure mode</td>
+        <td>bank conflict / divergence</td>
+        <td>data race / contention</td>
+        <td>lane mask / no emit</td>
+      </tr>
+      <tr>
+        <td>Width on this hw</td>
+        <td>32 (warp)</td>
+        <td>n cores</td>
+        <td>2 / 4 / 8 (NEON / AVX2 / AVX-512)</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<hr class="rule">
+
+<section id="next">
+  <p class="eyebrow">Section 8</p>
+  <h2>What's next &amp; whiteboard sanity-check</h2>
+
+  <p>Module 3.5 — the <em>wgpu retrofit</em>. Port the CUDA kernels to WGSL
+  (WebGPU Shading Language) so the backend also runs on Apple Silicon, Intel
+  iGPUs, AMD GPUs, browsers — anything WebGPU touches. Smaller follow-up
+  exercise. The lesson is "what does WGSL abstract that CUDA does not, and
+  at what cost?" Spoiler: WGSL is shader-flavored, the dispatch grid maps
+  cleanly, <code>workgroupBarrier()</code> stands in for
+  <code>__syncthreads()</code>, the missing piece is anything CUDA-specific
+  (tensor cores, warp shuffles). You will feel the abstraction.</p>
+
+  <p>Module 4 is the CNN. By that point the framework is fast enough to
+  actually train MNIST in seconds, and the backends are interchangeable from
+  the user's point of view.</p>
+
+  <h3>Whiteboard sanity-check</h3>
+
+  <p>Close this doc. Get a piece of paper. Answer each in a sentence or
+  two. If you cannot answer one, you have not earned the right to claim
+  Module 3 is done.</p>
+
+  <ol>
+    <li>Why doesn't <code>par_iter</code> work directly for reduce? Sketch the
+    fold-then-reduce shape in two lines of prose.</li>
+    <li>What is the role of the <em>second</em> <code>__syncthreads()</code>
+    in tiled matmul? (Not the first.)</li>
+    <li>Which thread reads which element of A in a tile load, and why does
+    that pattern matter for memory coalescing?</li>
+    <li>In a <code>__shared__</code>-memory tree reduce, which threads stay
+    live on each round, and how does a thread find its partner element? Why
+    does the naive answer hurt warp efficiency, and what races if you remove
+    the barrier?</li>
+    <li>Name two reasons compiler auto-vectorization fails on the trait's
+    closure-driven map.</li>
+    <li>What is the bit-exactness contract between scalar and SIMD on (a) a
+    sigmoid map and (b) a sum-reduce? Why are they different?</li>
+    <li>For 2×3 by 3×4 matmul, what is the smallest fixture that catches a
+    transposed-indexing bug? Trace one output cell on paper.</li>
+    <li>Running <code>cargo asm</code> on <code>FastOps::map</code>: what
+    instruction proves SIMD emitted, and what instruction proves it didn't?</li>
+  </ol>
+
+  <p>If you can answer all eight without notes, Module 3 is in your hands.
+  That is the measure of done — not the test suite, not the benchmark.</p>
+</section>
+
+</main>
+
+<footer>
+  <p>minitorch-rs · Module 3 · Efficiency · Rayon + SIMD + CUDA</p>
+  <p>Cross-doc: <a href="module3.md">module3.md</a> · Roadmap: <a href="ROADMAP.md">ROADMAP.md</a> · Prior: <a href="module2.html">module2.html</a></p>
+</footer>
+
+</div>
+</body>
+</html>
