@@ -2,6 +2,7 @@ use std::rc::Rc;
 
 use crate::tensor_ops::broadcast_strides;
 
+#[derive(Clone)]
 pub struct TensorData {
     pub storage: Rc<Vec<f64>>,
     pub storage_offset: usize,
@@ -73,6 +74,13 @@ impl TensorData {
         }
     }
 
+    pub fn permute_last_two(&self) -> Self {
+        let n = self.ndim();
+        let mut axes: Vec<usize> = (0..n).collect();
+        axes.swap(n - 1, n - 2);
+        self.permute(&axes)
+    }
+
     pub fn iter_indices(&self) -> impl Iterator<Item = Vec<usize>> {
         iter_indices_of_shape(&self.shape)
     }
@@ -103,6 +111,17 @@ impl TensorData {
             shape: vec![m, k],
             strides: self.strides[self.ndim() - 2..].to_vec(),
         }
+    }
+
+    /// Produces a new TensorData with storage being a contiguous array
+    pub fn contiguous(&self) -> Self {
+        if self.strides == contiguous_strides(&self.shape) && self.storage_offset == 0
+        {
+            return self.clone();
+        }
+        let contiguous_storage =
+            self.iter_indices().map(|idx| self.get(&idx)).collect();
+        Self::new(contiguous_storage, self.shape.clone())
     }
 }
 

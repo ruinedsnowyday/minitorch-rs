@@ -126,7 +126,7 @@ fn test_zip_panics_on_incompatible_shapes() {
 #[test]
 fn test_reduce_sum_dim_0() {
     let t = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 0);
+    let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 0, false);
     assert_eq!(out.shape, vec![3]);
     assert_eq!(&*out.storage, &vec![5.0, 7.0, 9.0]);
 }
@@ -136,7 +136,7 @@ fn test_reduce_sum_dim_0() {
 #[test]
 fn test_reduce_sum_dim_1() {
     let t = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 1);
+    let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 1, false);
     assert_eq!(out.shape, vec![2]);
     assert_eq!(&*out.storage, &vec![6.0, 15.0]);
 }
@@ -146,7 +146,7 @@ fn test_reduce_sum_dim_1() {
 #[test]
 fn test_reduce_product_dim_0() {
     let t = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
-    let out = SimpleOps::reduce(&t, |a, b| a * b, 1.0, 0);
+    let out = SimpleOps::reduce(&t, |a, b| a * b, 1.0, 0, false);
     assert_eq!(out.shape, vec![3]);
     assert_eq!(&*out.storage, &vec![4.0, 10.0, 18.0]);
 }
@@ -164,7 +164,7 @@ fn test_reduce_3d_middle_dim() {
              7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
         vec![2, 3, 2],
     );
-    let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 1);
+    let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 1, false);
     assert_eq!(out.shape, vec![2, 2]);
     assert_eq!(&*out.storage, &vec![9.0, 12.0, 27.0, 30.0]);
 }
@@ -174,7 +174,64 @@ fn test_reduce_3d_middle_dim() {
 fn test_reduce_panics_on_dim_out_of_range() {
     let t = TensorData::new(vec![1.0, 2.0], vec![2]);
     // dim 5 doesn't exist on a 1D tensor
-    let _ = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 5);
+    let _ = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 5, false);
+}
+
+// ---- keep_dims = true ----
+
+// Same data as test_reduce_sum_dim_0, but the reduced dim is kept as 1.
+//   shape [2, 3] reduced along dim 0 with keep_dims → shape [1, 3]
+//   values unchanged: [5, 7, 9]
+#[test]
+fn test_reduce_keepdims_sum_dim_0() {
+    let t = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 0, true);
+    assert_eq!(out.shape, vec![1, 3]);
+    assert_eq!(&*out.storage, &vec![5.0, 7.0, 9.0]);
+}
+
+// Reduce dim 1 with keep_dims — output rank matches input rank.
+//   shape [2, 3] → [2, 1], values [6, 15]
+#[test]
+fn test_reduce_keepdims_sum_dim_1() {
+    let t = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 1, true);
+    assert_eq!(out.shape, vec![2, 1]);
+    assert_eq!(&*out.storage, &vec![6.0, 15.0]);
+}
+
+// 3D middle-dim reduction with keep_dims preserves rank.
+//   shape [2, 3, 2] → [2, 1, 2], same values as test_reduce_3d_middle_dim
+#[test]
+fn test_reduce_keepdims_3d_middle_dim() {
+    let t = TensorData::new(
+        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
+             7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        vec![2, 3, 2],
+    );
+    let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 1, true);
+    assert_eq!(out.shape, vec![2, 1, 2]);
+    assert_eq!(&*out.storage, &vec![9.0, 12.0, 27.0, 30.0]);
+}
+
+// Reducing the only dim of a 1D tensor with keep_dims → shape [1].
+// Without keep_dims this would give shape [].
+#[test]
+fn test_reduce_keepdims_rank_one_to_size_one() {
+    let t = TensorData::new(vec![1.0, 2.0, 3.0, 4.0], vec![4]);
+    let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 0, true);
+    assert_eq!(out.shape, vec![1]);
+    assert_eq!(&*out.storage, &vec![10.0]);
+}
+
+// Reducing the last dim of a 2D tensor with keep_dims — covers the
+// "dim is the last axis" path (different splice arithmetic than dim=0).
+#[test]
+fn test_reduce_keepdims_last_dim_of_2d() {
+    let t = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 1, true);
+    assert_eq!(out.shape, vec![2, 1]);
+    assert_eq!(&*out.storage, &vec![6.0, 15.0]);
 }
 
 // ===================================================================

@@ -15,6 +15,7 @@ pub trait TensorOps {
         f: impl Fn(f64, f64) -> f64,
         init: f64,
         dim: usize,
+        keep_dims: bool,
     ) -> TensorData;
 
     fn matmul(a: &TensorData, b: &TensorData) -> TensorData;
@@ -52,6 +53,7 @@ impl TensorOps for SimpleOps {
         f: impl Fn(f64, f64) -> f64,
         init: f64,
         dim: usize,
+        keep_dims: bool,
     ) -> TensorData {
         assert!(
             dim < input.shape.len(),
@@ -63,15 +65,27 @@ impl TensorOps for SimpleOps {
             .shape
             .iter()
             .enumerate()
-            .filter_map(|(idx, &len)| if idx != dim { Some(len) } else { None })
+            .filter_map(|(idx, &len)| {
+                if idx != dim {
+                    Some(len)
+                } else if keep_dims {
+                    Some(1)
+                } else {
+                    None
+                }
+            })
             .collect();
         let mut out_storage = Vec::with_capacity(target_shape.iter().product());
         for out_idx in iter_indices_of_shape(&target_shape) {
             let mut val = init;
             let mut idx: Vec<usize> = Vec::with_capacity(input.shape.len());
-            idx.extend_from_slice(&out_idx[..dim]);
-            idx.push(0);
-            idx.extend_from_slice(&out_idx[dim..]);
+            if keep_dims {
+                idx = out_idx;
+            } else {
+                idx.extend_from_slice(&out_idx[..dim]);
+                idx.push(0);
+                idx.extend_from_slice(&out_idx[dim..]);
+            }
             for i in 0..input.shape[dim] {
                 idx[dim] = i;
                 val = f(val, input.get(&idx));

@@ -1,8 +1,28 @@
 use std::rc::Rc;
 
 use minitorch_rs::tensor::{Tensor};
-use minitorch_rs::tensor_autodiff::{TensorGraph, TensorNodeId, TensorOp};
+use minitorch_rs::tensor_autodiff::{maybe_reduce_broadcast, TensorGraph, TensorNodeId, TensorOp};
 use minitorch_rs::tensor_data::TensorData;
+
+/// Compare a TensorData's logical contents (respecting strides) against an
+/// expected shape and row-major-ordered value list. Use this instead of
+/// peeking at `storage` directly so the assertion works regardless of the
+/// physical layout the function under test happens to produce.
+fn assert_data_eq(actual: &TensorData, expected_shape: &[usize], expected_values: &[f64]) {
+    assert_eq!(
+        &actual.shape[..],
+        expected_shape,
+        "shape mismatch: got {:?}, expected {:?}",
+        actual.shape,
+        expected_shape,
+    );
+    let collected: Vec<f64> = actual.iter_indices().map(|idx| actual.get(&idx)).collect();
+    assert_eq!(
+        collected, expected_values,
+        "values mismatch: got {:?}, expected {:?}",
+        collected, expected_values,
+    );
+}
 
 // ===================================================================
 // TensorGraph::new
@@ -267,4 +287,99 @@ fn test_clone_shares_history_graph() {
     let h2 = t2.history.as_ref().unwrap();
     assert!(Rc::ptr_eq(&h1.graph, &h2.graph));
     assert_eq!(h1.node_id, h2.node_id);
+}
+
+// ===================================================================
+// maybe_reduce_broadcast
+// ===================================================================
+
+// Identity: when grad already has target_shape, return the same values.
+// This is the "maybe" no-op path.
+#[test]
+fn test_maybe_reduce_broadcast_identity() {
+    let grad = TensorData::new(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2]);
+    let out = maybe_reduce_broadcast(&grad, &[2, 2]);
+    assert_data_eq(&out, &[2, 2], &[1.0, 2.0, 3.0, 4.0]);
+}
+
+// Rank reduction: grad has extra leading dim, target dropped it. Sum dim 0.
+// shape [2, 3] reduced to [3] = column sums.
+#[test]
+fn test_maybe_reduce_broadcast_drops_one_leading_dim() {
+    let grad = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let out = maybe_reduce_broadcast(&grad, &[3]);
+    assert_data_eq(&out, &[3], &[5.0, 7.0, 9.0]);
+}
+
+// Rank reduction: multiple leading dims to strip.
+// shape [2, 2, 2] of ones reduced to [2] = each cell summed 2*2 = 4 times.
+#[test]
+fn test_maybe_reduce_broadcast_drops_multiple_leading_dims() {
+    let grad = TensorData::new(vec![1.0; 8], vec![2, 2, 2]);
+    let out = maybe_reduce_broadcast(&grad, &[2]);
+    assert_data_eq(&out, &[2], &[4.0, 4.0]);
+}
+
+// Size-1 collapse with keep_dims at a single dim.
+// shape [2, 3] reduced to [1, 3] = column sums but rank preserved.
+#[test]
+fn test_maybe_reduce_broadcast_collapse_single_size_one_dim() {
+    let grad = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let out = maybe_reduce_broadcast(&grad, &[1, 3]);
+    assert_data_eq(&out, &[1, 3], &[5.0, 7.0, 9.0]);
+}
+
+// Size-1 collapse at multiple dims simultaneously.
+// shape [2, 3, 4] of ones reduced to [1, 3, 1] = each cell summed 2*4 = 8 times.
+#[test]
+fn test_maybe_reduce_broadcast_collapse_multiple_size_one_dims() {
+    let grad = TensorData::new(vec![1.0; 24], vec![2, 3, 4]);
+    let out = maybe_reduce_broadcast(&grad, &[1, 3, 1]);
+    assert_data_eq(&out, &[1, 3, 1], &[8.0, 8.0, 8.0]);
+}
+
+// Mixed: extra leading dim AND size-1 collapse on a surviving dim.
+// shape [4, 2, 3] of ones reduced to [1, 3]:
+//   - strip leading dim 0 (size 4): result [2, 3] of 4s
+//   - collapse dim 0 from 2 to 1: result [1, 3] of 8s
+#[test]
+fn test_maybe_reduce_broadcast_mixed_leading_and_collapse() {
+    let grad = TensorData::new(vec![1.0; 24], vec![4, 2, 3]);
+    let out = maybe_reduce_broadcast(&grad, &[1, 3]);
+    assert_data_eq(&out, &[1, 3], &[8.0, 8.0, 8.0]);
+}
+
+// Scalar target: every leading dim must be summed out.
+// shape [2, 3] reduced to [] = single total = 21.
+#[test]
+fn test_maybe_reduce_broadcast_to_scalar_from_rank_two() {
+    let grad = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
+    let out = maybe_reduce_broadcast(&grad, &[]);
+    assert_data_eq(&out, &[], &[21.0]);
+}
+
+// Scalar target from a vector.
+// shape [5] reduced to [] = sum.
+#[test]
+fn test_maybe_reduce_broadcast_to_scalar_from_rank_one() {
+    let grad = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0], vec![5]);
+    let out = maybe_reduce_broadcast(&grad, &[]);
+    assert_data_eq(&out, &[], &[15.0]);
+}
+
+// Identity for a rank-1 tensor — covers a different code path than rank-2.
+#[test]
+fn test_maybe_reduce_broadcast_identity_rank_one() {
+    let grad = TensorData::new(vec![1.0, 2.0, 3.0], vec![3]);
+    let out = maybe_reduce_broadcast(&grad, &[3]);
+    assert_data_eq(&out, &[3], &[1.0, 2.0, 3.0]);
+}
+
+// A dim that's already-size-1 in grad and target should pass through untouched
+// (the collapse condition requires result.shape[i] > 1, so this is a no-op).
+#[test]
+fn test_maybe_reduce_broadcast_preserves_already_size_one_dim() {
+    let grad = TensorData::new(vec![1.0, 2.0, 3.0], vec![1, 3]);
+    let out = maybe_reduce_broadcast(&grad, &[1, 3]);
+    assert_data_eq(&out, &[1, 3], &[1.0, 2.0, 3.0]);
 }
