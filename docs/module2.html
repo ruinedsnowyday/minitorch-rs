@@ -479,10 +479,23 @@ of index and strides.</div>
 <p>The struct is small:</p>
 
 <pre><code><span class="kw">pub struct</span> <span class="ty">TensorData</span> {
-    <span class="kw">pub</span> storage: <span class="ty">Vec</span>&lt;<span class="ty">f64</span>&gt;,
-    <span class="kw">pub</span> shape:   <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;,
-    <span class="kw">pub</span> strides: <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;,
+    <span class="kw">pub</span> storage:        <span class="ty">Rc</span>&lt;<span class="ty">Vec</span>&lt;<span class="ty">f64</span>&gt;&gt;,
+    <span class="kw">pub</span> storage_offset: <span class="ty">usize</span>,
+    <span class="kw">pub</span> shape:          <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;,
+    <span class="kw">pub</span> strides:        <span class="ty">Vec</span>&lt;<span class="ty">usize</span>&gt;,
 }</code></pre>
+
+<p>Two fields beyond the obvious deserve a note. <strong><code>storage</code>
+is <code>Rc&lt;Vec&lt;f64&gt;&gt;</code></strong>, not a bare <code>Vec</code>:
+permutes, broadcasts, slices, and per-batch views in matmul all want to
+share the same underlying numbers without copying. The COW comes in
+through <code>set</code>, which calls <code>Rc::make_mut</code> — if the
+storage has exactly one owner, you write in place; otherwise it clones
+first so siblings aren't perturbed. <strong><code>storage_offset</code>
+is the starting index into <code>storage</code></strong> for this view.
+Without it, a slice into the middle of a larger tensor would need its
+own Vec. With it, you reuse storage and just bump the offset — every
+read becomes <code>storage[storage_offset + Σ strides[i]·idx[i]]</code>.</p>
 
 <p>The real magic is what stride math enables. Consider <em>transpose</em>:
 in most array libraries, transposing a large tensor would copy data. With
@@ -633,9 +646,8 @@ data copied. This is why <code>x.t()</code> in PyTorch is O(1).</div>
     each yielded index is its own owned thing.</li>
   <li><strong><code>permute</code> doesn't move data.</strong> Build new
     <code>shape</code> and <code>strides</code> by permuting the originals
-    with the given axis order. Share the same <code>storage</code> Vec
-    (you can <code>storage.clone()</code> for simplicity — or use
-    <code>Rc&lt;Vec&lt;f64&gt;&gt;</code> later for true zero-copy views).</li>
+    with the given axis order. Share the same <code>storage</code> via
+    <code>Rc::clone(&amp;self.storage)</code> — true zero-copy view.</li>
   <li><strong>Don't validate strides at construction time</strong> unless
     you want to forbid non-contiguous tensors. We <em>do</em> want
     non-contiguous (transpose, broadcast), so accept any consistent
@@ -904,7 +916,7 @@ single trait lets you swap in <code>SimpleOps</code> (this module),
 (wgpu, module 8), and eventually <code>CudaOps</code> — all without
 rewriting <code>Linear</code> or the loss functions.</p>
 
-<pre><code><span class="kw">pub trait</span> <span class="ty">TensorBackend</span> {
+<pre><code><span class="kw">pub trait</span> <span class="ty">TensorOps</span> {
     <span class="cmt">/// Apply a unary function element-wise.</span>
     <span class="kw">fn</span> <span class="fn">map</span>(input: &amp;<span class="ty">TensorData</span>, f: <span class="kw">impl</span> <span class="ty">Fn</span>(<span class="ty">f64</span>) -&gt; <span class="ty">f64</span>) -&gt; <span class="ty">TensorData</span>;
 
@@ -915,12 +927,14 @@ rewriting <code>Linear</code> or the loss functions.</p>
         f: <span class="kw">impl</span> <span class="ty">Fn</span>(<span class="ty">f64</span>, <span class="ty">f64</span>) -&gt; <span class="ty">f64</span>,
     ) -&gt; <span class="ty">TensorData</span>;
 
-    <span class="cmt">/// Reduce along a single dim with a binary op + identity element.</span>
+    <span class="cmt">/// Reduce along a single dim. `keep_dims` controls whether the</span>
+    <span class="cmt">/// reduced axis collapses (false) or stays as size 1 (true).</span>
     <span class="kw">fn</span> <span class="fn">reduce</span>(
         input: &amp;<span class="ty">TensorData</span>,
         f: <span class="kw">impl</span> <span class="ty">Fn</span>(<span class="ty">f64</span>, <span class="ty">f64</span>) -&gt; <span class="ty">f64</span>,
         init: <span class="ty">f64</span>,
         dim: <span class="ty">usize</span>,
+        keep_dims: <span class="ty">bool</span>,
     ) -&gt; <span class="ty">TensorData</span>;
 
     <span class="cmt">/// 2D matrix multiply (or batched). Output shape per matmul rules.</span>
@@ -928,14 +942,25 @@ rewriting <code>Linear</code> or the loss functions.</p>
 }
 
 <span class="kw">pub struct</span> <span class="ty">SimpleOps</span>;
-<span class="kw">impl</span> <span class="ty">TensorBackend</span> <span class="kw">for</span> <span class="ty">SimpleOps</span> { <span class="cmt">/* ... */</span> }</code></pre>
+<span class="kw">impl</span> <span class="ty">TensorOps</span> <span class="kw">for</span> <span class="ty">SimpleOps</span> { <span class="cmt">/* ... */</span> }</code></pre>
 
 <p>Three primitives — <code>map</code>, <code>zip</code>,
 <code>reduce</code> — plus <code>matmul</code> cover the entire surface
 of element-wise tensor math. Sigmoid is <code>map(sigmoid)</code>.
 Add is <code>zip(|a, b| a + b)</code>. Sum-along-dim is
-<code>reduce(|a, b| a + b, 0.0, dim)</code>. Matmul is its own special
-case because it's not element-wise.</p>
+<code>reduce(|a, b| a + b, 0.0, dim, keep_dims)</code>. Matmul is its own
+special case because it's not element-wise.</p>
+
+<p>The <code>keep_dims</code> flag on <code>reduce</code> matters more
+than it looks. With <code>keep_dims=false</code> the reduced axis is
+removed; with <code>true</code> it stays as size 1. The choice ripples
+into backward: <code>Tensor::sum</code> uses <code>keep_dims=true</code>
+under the hood, so its backward arm is a one-line
+<code>gradient.broadcast_to(&amp;orig_shape)</code> — the size-1 dim
+expands cleanly to the original size. The keep-dims convention also
+matches what <code>maybe_reduce_broadcast</code> needs when reducing
+broadcast dims in Add/Mul backward (it builds size-1 dims, not removes
+them).</p>
 
 <h4>Rust notes</h4>
 <ul>
@@ -948,7 +973,7 @@ case because it's not element-wise.</p>
     not optimizing — the trait abstraction is what lets module 7 do that
     later without touching this code.</li>
   <li><strong>Static dispatch on the backend.</strong> Make <code>Tensor</code>
-    generic over the backend (<code>Tensor&lt;B: TensorBackend&gt;</code>)
+    generic over the backend (<code>Tensor&lt;B: TensorOps&gt;</code>)
     OR pick one at compile time via a type alias. Generic is more flexible;
     type alias is simpler. Start with the alias; switch to generic if you
     actually want to support multiple backends at once.</li>
@@ -1151,17 +1176,17 @@ literally our case:</p>
     where natural — <code>TensorData</code> stays plain.</li>
 </ul>
 
-<p><strong>Upgrade path if it ever becomes a bottleneck:</strong> the
-standard refactor is a "with-graph" closure pattern that scopes
-<code>borrow_mut</code> to a single op call site:</p>
-
-<pre><code><span class="kw">fn</span> <span class="fn">with_graph</span>&lt;<span class="ty">R</span>&gt;(&amp;<span class="kw">self</span>, f: <span class="kw">impl</span> <span class="ty">FnOnce</span>(&amp;<span class="kw">mut</span> <span class="ty">TensorGraph</span>) -&gt; <span class="ty">R</span>) -&gt; <span class="ty">R</span> {
-    f(&amp;<span class="kw">mut</span> <span class="kw">self</span>.graph.borrow_mut())
-}</code></pre>
-
-<p>That keeps the <code>Rc&lt;RefCell&gt;</code> for sharing but minimizes
-borrow scopes. We won't need it at module 2 scale; flag it if profiling
-ever calls for it.</p>
+<p><strong>How this actually shows up in the code:</strong> two helper
+functions in <code>src/tensor.rs</code> — <code>make_unary_op</code> and
+<code>make_binary_op_ref</code> — own the
+<code>graph.borrow_mut()</code> calls so individual op implementations
+stay one-liners. Each helper handles "compute the data, find the shared
+graph, register parent leaves if needed, call
+<code>graph.apply(...)</code>." Parent-id lookup is its own
+<code>Tensor::node_id_in</code> method; graph-conflict resolution is
+<code>pick_shared_graph</code>. Anyone reading the code can see at a
+glance that the <code>borrow_mut</code> is scoped to a single op call
+and never escapes — no nested-borrow surprises possible.</p>
 
 <p>Bottom line: add a <code>///</code> comment on the <code>History</code>
 struct saying "this is the deliberate shared-mutable-graph pattern, not
@@ -1277,37 +1302,45 @@ worlds:</p>
   </div>
 </div>
 
-<p>The implementation pattern for each binary op:</p>
+<p>The implementation pattern for each binary op decomposes into four
+steps. Every binary op uses the same shape — your job is to write a
+single helper that captures it, then have each <code>impl</code> call
+that helper with the right op variant and compute closure:</p>
+
+<ol>
+  <li><strong>Compute the output data.</strong> Use the corresponding
+    <code>SimpleOps</code> primitive — e.g.
+    <code>SimpleOps::zip(&amp;a.data, &amp;b.data, |x, y| x + y)</code>
+    for <code>Add</code>. The result is a fresh <code>TensorData</code>;
+    wrap it in <code>Rc</code> so the graph node and the returned
+    <code>Tensor</code> share it.</li>
+  <li><strong>Decide whether to record history.</strong> Short-circuit
+    when neither operand has history — no graph involvement, just return
+    the data. Otherwise pick a shared graph (panic on a mismatch) and
+    look up each operand's node id, registering a leaf for operands that
+    didn't have one yet.</li>
+  <li><strong>Apply the op to the graph.</strong> Call
+    <code>graph.apply(TensorOp::Add, out_rc.clone(), vec![a_id, b_id])</code>
+    to add a new node and get its id.</li>
+  <li><strong>Return the new <code>Tensor</code></strong> with the data
+    Rc and the freshly-built <code>History</code>.</li>
+</ol>
+
+<p>Skeleton — fill in the body yourself:</p>
 
 <pre><code><span class="kw">impl</span> <span class="ty">Add</span>&lt;&amp;<span class="ty">Tensor</span>&gt; <span class="kw">for</span> &amp;<span class="ty">Tensor</span> {
     <span class="kw">type</span> <span class="ty">Output</span> = <span class="ty">Tensor</span>;
-    <span class="kw">fn</span> <span class="fn">add</span>(<span class="kw">self</span>, other: &amp;<span class="ty">Tensor</span>) -&gt; <span class="ty">Tensor</span> {
-        <span class="cmt">// 1. compute output data</span>
-        <span class="kw">let</span> out_data = <span class="ty">SimpleOps</span>::zip(&amp;<span class="kw">self</span>.data, &amp;other.data, |x, y| x + y);
-        <span class="kw">let</span> out_rc = <span class="ty">Rc</span>::new(out_data);
-
-        <span class="cmt">// 2. figure out the graph (None if neither input requires grad)</span>
-        <span class="kw">let</span> history = <span class="kw">match</span> (&amp;<span class="kw">self</span>.history, &amp;other.history) {
-            (<span class="ty">None</span>, <span class="ty">None</span>) =&gt; <span class="ty">None</span>,
-            _ =&gt; {
-                <span class="kw">let</span> graph = pick_shared_graph(&amp;<span class="kw">self</span>.history, &amp;other.history);
-                <span class="kw">let</span> a_id = leaf_id_or_register(&amp;graph, &amp;<span class="kw">self</span>.history, &amp;<span class="kw">self</span>.data);
-                <span class="kw">let</span> b_id = leaf_id_or_register(&amp;graph, &amp;other.history, &amp;other.data);
-                <span class="kw">let</span> node_id = graph.borrow_mut().apply(
-                    <span class="ty">TensorOp</span>::Add, out_rc.clone(), <span class="kw">vec</span>![a_id, b_id],
-                );
-                <span class="ty">Some</span>(<span class="ty">History</span> { graph, node_id })
-            }
-        };
-
-        <span class="ty">Tensor</span> { data: out_rc, history }
-    }
+    <span class="kw">fn</span> <span class="fn">add</span>(<span class="kw">self</span>, other: &amp;<span class="ty">Tensor</span>) -&gt; <span class="ty">Tensor</span> { <span class="kw">todo</span>!() }
 }</code></pre>
 
 <p>Then add a <code>Tensor + Tensor</code> impl that just forwards to
 <code>&amp;Tensor + &amp;Tensor</code>, and you can write either
 <code>a + b</code> (consumes) or <code>&amp;a + &amp;b</code> (borrows).
-PyTorch lets you do both for the same reason.</p>
+PyTorch lets you do both for the same reason. Once you have one binary
+op working, factor steps 1–4 into a <code>make_binary_op_ref</code>
+helper and have every overload delegate to it; the parent-id lookup
+deserves its own helper too (call it whatever — the in-tree code uses
+<code>Tensor::node_id_in</code> and <code>pick_shared_graph</code>).</p>
 
 <h3 id="t24">Task 2.4 — Implement the ops</h3>
 <p class="file-tag">src/tensor.rs</p>
@@ -1367,7 +1400,7 @@ when <code>backward()</code> walks the topo sort).</p>
     <tr>
       <td><code>Sum</code></td>
       <td><code>a.sum(dim)</code></td>
-      <td><code>reduce(a, +, 0, dim)</code></td>
+      <td><code>reduce(a, +, 0, dim, true)</code></td>
       <td><code>grad_a += broadcast(d, orig_shape)</code></td>
     </tr>
     <tr>
@@ -1397,6 +1430,33 @@ nudge consistency bit us when training xor — gradients exploded near
 sigmoid saturation. Don't repeat it in <code>Log</code>'s backward.
 Forward and backward must describe the same function.</p>
 </div>
+
+<h4>Small helpers that emerge while implementing the table</h4>
+<p>You'll find yourself reaching for these — define them when you do
+rather than upfront:</p>
+<ul>
+  <li><strong><code>TensorData::contiguous(&amp;self) -&gt; Self</code></strong>
+    — materializes a row-major copy. <code>View</code> backward needs
+    it because the upstream gradient might be a strided view (e.g.
+    produced by an earlier <code>Permute</code>'s backward), and a no-copy
+    reshape on strided storage walks values in the wrong order. Whenever
+    you need contiguous values from a possibly-strided tensor, this is
+    the one-liner.</li>
+  <li><strong><code>TensorData::permute_last_two(&amp;self) -&gt; Self</code></strong>
+    — transpose of the trailing two dims (batch dims untouched). The
+    MatMul backward formula <code>d @ B^T</code> and <code>A^T @ d</code>
+    needs exactly this. Just a <code>permute</code> with axes
+    <code>[0, 1, ..., n-1, n-2]</code>.</li>
+  <li><strong><code>TensorGraph::clear_gradients(&amp;mut self)</code></strong>
+    — wipe every node's gradient back to <code>None</code>. Call this at
+    the top of <code>Tensor::backward</code> so calling it twice produces
+    the same result both times (without it, intermediate nodes are read
+    as upstream on the second pass and you over-accumulate). The
+    standard PyTorch tradeoff between leaf-accumulation-as-feature and
+    intermediate-resets does not apply here — clear everything, every
+    time, and add a flag later if you actually want gradient
+    accumulation across mini-batches.</li>
+</ul>
 
 <h4>Three traps worth flagging now</h4>
 
@@ -1459,32 +1519,43 @@ copying needed for the gradient tensor.</p>
 <h2>6. Backward through tensor ops</h2>
 
 <p><code>Tensor::backward()</code> is the same algorithm as the scalar
-version, lifted: topo sort from the loss tensor back to leaves, then
-walk it in reverse, calling each op's backward to deposit gradients on
-parents.</p>
+version, lifted to tensors. The driver is a five-step routine on
+<code>TensorGraph</code> (or <code>Tensor</code>, with a thin wrapper):</p>
+
+<ol>
+  <li><strong>Clear leftover gradients.</strong> Walk every node, set
+    <code>gradient = None</code>. Without this, calling
+    <code>backward()</code> twice in a row over-accumulates because
+    intermediate nodes are read as upstream on the second pass.</li>
+  <li><strong>Seed the root.</strong> Set the calling tensor's
+    <code>gradient</code> to <code>TensorData::ones(shape)</code> — the
+    multivariable equivalent of <code>∂loss/∂loss = 1</code>.</li>
+  <li><strong>Topo sort.</strong> Reuse the DFS from
+    <code>scalar::autodiff</code>; the algorithm is unchanged.</li>
+  <li><strong>Walk in reverse.</strong> For each node, ask it for its
+    parent-id-to-gradient pairs (one op-specific routine per
+    <code>TensorOp</code> variant — see §5).</li>
+  <li><strong>Accumulate into each parent.</strong> If the parent had
+    no gradient yet, assign; otherwise <code>zip(+)</code> the new
+    contribution onto the old. This is correct for shared parents
+    (multivariable chain rule sums over usage sites).</li>
+</ol>
+
+<p>Two things "seeded with ones" is doing implicitly. First, the loss
+tensor is assumed to be scalar-shaped (or you've at least
+<code>.sum()</code>d it down). Second, the seed is what makes the
+gradients computed everywhere downstream actually mean
+<code>∂loss/∂x</code> — without it you'd be propagating zeros and
+getting zero gradients everywhere. If you ever want a non-scalar
+"vector-Jacobian product" backward (PyTorch's
+<code>backward(gradient=...)</code>), you'd accept a seed argument
+instead of materializing ones.</p>
+
+<p>Skeleton — fill in the body yourself by translating the five steps:</p>
 
 <pre><code><span class="kw">impl</span> <span class="ty">Tensor</span> {
-    <span class="kw">pub fn</span> <span class="fn">backward</span>(&amp;<span class="kw">self</span>) {
-        <span class="kw">let</span> hist = <span class="kw">self</span>.history.as_ref().expect(<span class="str">"backward on a tensor without history"</span>);
-        <span class="kw">let mut</span> graph = hist.graph.borrow_mut();
-        <span class="kw">let</span> order = graph.topological_sort(hist.node_id);
-
-        <span class="cmt">// seed the output gradient as ones</span>
-        graph.nodes[hist.node_id.0].gradient =
-            <span class="ty">Some</span>(<span class="ty">TensorData</span>::ones(<span class="kw">self</span>.shape().to_vec()));
-
-        <span class="kw">for</span> id <span class="kw">in</span> order.iter().rev() {
-            <span class="kw">let</span> grads = graph.compute_backward_for(*id);
-            <span class="kw">for</span> (parent, g) <span class="kw">in</span> grads {
-                accumulate(&amp;<span class="kw">mut</span> graph.nodes[parent.0].gradient, g);
-            }
-        }
-    }
+    <span class="kw">pub fn</span> <span class="fn">backward</span>(&amp;<span class="kw">self</span>) { <span class="kw">todo</span>!() }
 }</code></pre>
-
-<p>The "seed with ones" matches what we did for scalar (seed with 1.0).
-Same theoretical move: we're computing <code>∂loss/∂x</code> for each
-<code>x</code>, with <code>∂loss/∂loss = 1</code>.</p>
 
 <div class="figure">
 <svg viewBox="0 0 720 240" xmlns="http://www.w3.org/2000/svg">
@@ -1618,19 +1689,30 @@ one-liner. Side by side, with the same logical model:</p>
   <div>
     <h4>Tensor BCE</h4>
 <pre><code><span class="kw">pub fn</span> <span class="fn">bce</span>(pred: &amp;<span class="ty">Tensor</span>, target: &amp;<span class="ty">Tensor</span>) -&gt; <span class="ty">Tensor</span> {
-    -&amp;(target * &amp;pred.log()
-      + &amp;(<span class="ty">Tensor</span>::ones_like(target) - target)
-        * &amp;(<span class="ty">Tensor</span>::ones_like(pred) - pred).log())
+    <span class="kw">let</span> ones_t = <span class="ty">Tensor</span>::from_data(<span class="ty">TensorData</span>::ones(target.shape().to_vec()));
+    <span class="kw">let</span> ones_p = <span class="ty">Tensor</span>::from_data(<span class="ty">TensorData</span>::ones(pred.shape().to_vec()));
+    -&amp;(target * &amp;pred.log() + &amp;(&amp;ones_t - target) * &amp;(&amp;ones_p - pred).log())
 }</code></pre>
   </div>
 </div>
 
 <p>(The tensor BCE is still verbose because of the <code>1 - x</code>
-parts. A small <code>tensor.one_minus()</code> helper or
-<code>Sub</code> impl cleans it up further. Style choice.)</p>
+parts. A small <code>Tensor::ones_like</code> constructor and/or a
+<code>Sub</code> impl cleans it up further. Neither exists yet in the
+in-tree code — adding them when Task 2.5 lands is part of the work.)</p>
 
 <h3 id="t25">Task 2.5 — Rewrite Linear / Network / loss / train using tensors</h3>
 <p class="file-tag">src/tensor_nn.rs, src/tensor_loss.rs, src/tensor_train.rs</p>
+
+<div class="callout warn">
+<p><strong>Status: upcoming work, not done yet.</strong> Tasks 2.1–2.4
+landed — tensor data, tensor ops, the autograd graph, and forward +
+backward for every op. This task — lifting <code>Linear</code>,
+<code>Network</code>, loss, and the training loop onto tensors — is the
+natural next step before module 3 (FastOps). The discussion below is
+the design we'll follow when we get to it; nothing in <code>src/</code>
+matches it yet.</p>
+</div>
 
 <p><strong>Strategy: parallel files, don't overwrite.</strong> Keep the
 scalar versions intact as reference. Build the tensor versions in new
@@ -1661,8 +1743,8 @@ field needed — the tensor IS the graph node).</p>
 
 <pre><code><span class="kw">for</span> epoch <span class="kw">in</span> <span class="num">0</span>..epochs {
     <span class="kw">for</span> (x_vec, label) <span class="kw">in</span> shuffled(&amp;dataset) {
-        <span class="kw">let</span> x = <span class="ty">Tensor</span>::from_vec(x_vec, &amp;[<span class="num">1</span>, <span class="num">2</span>]);
-        <span class="kw">let</span> target = <span class="ty">Tensor</span>::from_scalar(label);
+        <span class="kw">let</span> x = <span class="ty">Tensor</span>::from_data(<span class="ty">TensorData</span>::new(x_vec, <span class="kw">vec</span>![<span class="num">1</span>, <span class="num">2</span>]));
+        <span class="kw">let</span> target = <span class="ty">Tensor</span>::from_data(<span class="ty">TensorData</span>::new(<span class="kw">vec</span>![label], <span class="kw">vec</span>![]));
         <span class="kw">let</span> pred = network.forward(&amp;x);
         <span class="kw">let</span> loss = bce(&amp;pred, &amp;target);
         loss.backward();
@@ -1725,7 +1807,7 @@ machinery and does <code>w.data -= lr * w.grad</code> per parameter.</p>
 
 <ul>
   <li><strong>Module 3 (CLAUDE.md item 7):</strong>
-    <code>FastOps</code> — a parallel <code>TensorBackend</code>
+    <code>FastOps</code> — a parallel <code>TensorOps</code>
     implementation using rayon. Same trait, parallel <code>map</code> /
     <code>zip</code> / <code>reduce</code> / <code>matmul</code>. Zero
     changes to <code>Linear</code> / <code>Network</code> / loss / train —
