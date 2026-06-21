@@ -698,14 +698,15 @@ fn test_grad_none_before_backward() {
     assert!(t.grad().is_none());
 }
 
-// After backward on a single leaf chain, the leaf's gradient should be ones
-// (seeded gradient passes through identity operations).
+// After backward on a single leaf chain (summed to scalar), the leaf's
+// gradient should be ones — seeded gradient passes through identity ops.
 #[test]
 fn test_backward_seeds_with_ones() {
     let x = Tensor::from_data(td(vec![1.0, 2.0, 3.0], vec![3])).requires_grad();
-    // identity-like graph: x → x + 0 (so there's at least one op)
+    // identity-like graph: x → x + 0 (so there's at least one op), summed
+    // to a scalar so backward's scalar-output contract holds.
     let zeros = Tensor::from_data(td(vec![0.0, 0.0, 0.0], vec![3]));
-    let y = &x + &zeros;
+    let y = sum_all(&x + &zeros);
     y.backward();
     let g = x.grad().expect("grad should exist");
     assert_data_close(&g, &td(vec![1.0, 1.0, 1.0], vec![3]), 1e-10);
@@ -781,4 +782,52 @@ fn test_compute_backward_leaf_returns_empty() {
     let leaf = g.add_leaf(Rc::new(td(vec![1.0, 2.0], vec![2])));
     let result = g.compute_backward(leaf);
     assert!(result.is_empty());
+}
+
+// ===================================================================
+// Adversarial tests — catch contracts the happy-path grad-check suite
+// doesn't exercise.
+// ===================================================================
+
+// Backward must reject non-scalar outputs. Without the scalar assert,
+// calling .backward() on a non-scalar tensor silently computes
+// d(sum(output))/dx — a quiet, plausible-looking-but-wrong answer.
+// PyTorch raises here for the same reason.
+#[test]
+#[should_panic(expected = "scalar")]
+fn test_backward_panics_on_non_scalar_output() {
+    let x = Tensor::from_data(td(vec![1.0, 2.0, 3.0], vec![3])).requires_grad();
+    let y = &x + &x; // shape [3], not scalar
+    y.backward();
+}
+
+// 1-element-multi-dim tensors (e.g. [1,1,1]) ARE valid scalars by size().
+// This must not trip the scalar assert — sum_all produces exactly this shape.
+#[test]
+fn test_backward_accepts_1element_multidim_output() {
+    let x = Tensor::from_data(td(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2])).requires_grad();
+    let y = sum_all(x.sigmoid()); // shape ends up [1, 1], size 1
+    assert_eq!(y.size(), 1);
+    y.backward(); // must not panic
+    assert!(x.grad().is_some());
+}
+
+// Backward through View whose forward came from a sigmoid (which produces
+// contiguous storage) and whose backward used to bypass invariants — now
+// must produce a parent_gradient whose storage is tight. This catches the
+// combined map+View+contiguous regression as an end-to-end Tensor-API test.
+#[test]
+fn test_backward_view_through_sigmoid_produces_tight_grad() {
+    let x = Tensor::from_data(td(
+        vec![0.5, -0.3, 1.0, -1.2, 0.7, 0.2],
+        vec![2, 3],
+    ))
+    .requires_grad();
+    let y = sum_all(x.sigmoid().view(&[6]));
+    y.backward();
+    let g = x.grad().expect("grad should exist");
+    // Critical: shape matches x, storage tight (no leftover from the
+    // intermediate sigmoid/view tensors).
+    assert_eq!(g.shape, vec![2, 3]);
+    assert_eq!(g.storage.len(), 6, "grad storage must be tight to size");
 }

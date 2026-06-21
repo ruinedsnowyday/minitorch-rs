@@ -32,7 +32,7 @@ pub enum TensorOp {
     ReLU,
     Log,
     Exp,
-    Sum { dim: usize, orig_shape: Vec<usize> },
+    Sum { orig_shape: Vec<usize> },
     View { orig_shape: Vec<usize> },
     Permute { axes: Vec<usize> },
     MatMul,
@@ -107,17 +107,20 @@ impl TensorGraph {
         id: TensorNodeId,
     ) -> Vec<(TensorNodeId, TensorData)> {
         let node = &self.nodes[id.0];
+        if matches!(&node.op, TensorOp::Leaf) {
+            return vec![];
+        }
+        let gradient = node
+            .gradient
+            .as_ref()
+            .expect("gradient must be set before calling compute_backward");
         match &node.op {
-            TensorOp::Leaf => vec![],
+            TensorOp::Leaf => unreachable!(),
             TensorOp::Add => {
                 let left_parent_id = node.parents[0];
                 let left_parent_shape = &self.nodes[left_parent_id.0].out.shape;
                 let right_parent_id = node.parents[1];
                 let right_parent_shape = &self.nodes[right_parent_id.0].out.shape;
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 vec![
                     (
                         left_parent_id,
@@ -134,10 +137,6 @@ impl TensorGraph {
                 let left_parent = &self.nodes[left_parent_id.0];
                 let right_parent_id = node.parents[1];
                 let right_parent = &self.nodes[right_parent_id.0];
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 let left_gradient =
                     SimpleOps::zip(gradient, &right_parent.out, operators::mul);
                 let left_gradient_reduced =
@@ -153,30 +152,18 @@ impl TensorGraph {
             }
             TensorOp::Neg => {
                 let parent_id = node.parents[0];
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 let parent_gradient = SimpleOps::map(gradient, operators::neg);
                 vec![(parent_id, parent_gradient)]
             }
             TensorOp::Sigmoid => {
                 let parent_id = node.parents[0];
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 let parent_gradient =
-                    SimpleOps::zip(gradient, &node.out, |d, a| d * a * (1. - a));
+                    SimpleOps::zip(&node.out, gradient, operators::sigmoid_back);
                 vec![(parent_id, parent_gradient)]
             }
             TensorOp::ReLU => {
                 let parent_id = node.parents[0];
                 let parent = &self.nodes[parent_id.0];
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 let parent_gradient =
                     SimpleOps::zip(&parent.out, gradient, operators::relu_back);
                 vec![(parent_id, parent_gradient)]
@@ -184,38 +171,22 @@ impl TensorGraph {
             TensorOp::Log => {
                 let parent_id = node.parents[0];
                 let parent = &self.nodes[parent_id.0];
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 let parent_gradient =
                     SimpleOps::zip(&parent.out, gradient, operators::log_back);
                 vec![(parent_id, parent_gradient)]
             }
             TensorOp::Exp => {
                 let parent_id = node.parents[0];
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 let parent_gradient =
                     SimpleOps::zip(&node.out, gradient, operators::mul);
                 vec![(parent_id, parent_gradient)]
             }
-            TensorOp::Sum { dim: _, orig_shape } => {
+            TensorOp::Sum { orig_shape } => {
                 let parent_id = node.parents[0];
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 vec![(parent_id, gradient.broadcast_to(orig_shape))]
             }
             TensorOp::View { orig_shape } => {
                 let parent_id = node.parents[0];
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 let parent_gradient = TensorData {
                     storage: Rc::clone(&gradient.contiguous().storage),
                     storage_offset: 0,
@@ -226,10 +197,6 @@ impl TensorGraph {
             }
             TensorOp::Permute { axes } => {
                 let parent_id = node.parents[0];
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 let mut inverse_permutation = vec![0; axes.len()];
                 for i in 0..axes.len() {
                     inverse_permutation[axes[i]] = i
@@ -241,10 +208,6 @@ impl TensorGraph {
                 let left_parent = &self.nodes[left_parent_id.0];
                 let right_parent_id = node.parents[1];
                 let right_parent = &self.nodes[right_parent_id.0];
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 let left_gradient =
                     SimpleOps::matmul(gradient, &right_parent.out.permute_last_two());
                 let left_gradient_reduced =
@@ -260,10 +223,6 @@ impl TensorGraph {
             }
             TensorOp::Broadcast { orig_shape } => {
                 let parent_id = node.parents[0];
-                let gradient = node
-                    .gradient
-                    .as_ref()
-                    .expect("gradient must be set before calling compute_backward");
                 let parent_gradient = maybe_reduce_broadcast(gradient, orig_shape);
                 vec![(parent_id, parent_gradient)]
             }
@@ -314,6 +273,10 @@ pub fn maybe_reduce_broadcast(
             result = SimpleOps::reduce(&result, operators::add, 0., i, true);
         }
     }
+    assert_eq!(
+        result.shape, target_shape,
+        "expected the result shape to be equal to the input target shape"
+    );
     result
 }
 

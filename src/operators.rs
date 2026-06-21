@@ -68,6 +68,10 @@ pub fn relu_back(a: f64, d: f64) -> f64 {
     if a > 0. { d } else { 0. }
 }
 
+pub fn sigmoid_back(post_a: f64, d: f64) -> f64 {
+    post_a * (1.0 - post_a) * d
+}
+
 pub fn map<F>(f: F) -> impl Fn(&[f64]) -> Vec<f64>
 where
     F: Fn(f64) -> f64,

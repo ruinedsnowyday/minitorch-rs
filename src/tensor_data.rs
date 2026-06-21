@@ -113,9 +113,12 @@ impl TensorData {
         }
     }
 
-    /// Produces a new TensorData with storage being a contiguous array
+    /// Produces a new TensorData with storage being a contiguous array.
+    /// Short-circuits if the array is already contiguous
     pub fn contiguous(&self) -> Self {
-        if self.strides == contiguous_strides(&self.shape) && self.storage_offset == 0
+        if self.strides == contiguous_strides(&self.shape)
+            && self.storage_offset == 0
+            && self.storage.len() == self.size()
         {
             return self.clone();
         }

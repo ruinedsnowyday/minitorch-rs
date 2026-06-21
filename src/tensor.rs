@@ -116,7 +116,6 @@ impl Tensor {
         make_unary_op(
             self,
             TensorOp::Sum {
-                dim,
                 orig_shape: self.shape().to_vec(),
             },
             |in_data| SimpleOps::reduce(in_data, operators::add, 0., dim, true),
@@ -189,6 +188,11 @@ impl Tensor {
     /// backpropagation if the tensor has history
     pub fn backward(&self) {
         if let Some(h) = &self.history {
+            assert_eq!(
+                self.data.size(),
+                1,
+                "expected to seed the gradient backpropagation from a scalar"
+            );
             let mut graph = h.graph.borrow_mut();
             graph.clear_gradients();
             let node = &mut graph.nodes[h.node_id.0];

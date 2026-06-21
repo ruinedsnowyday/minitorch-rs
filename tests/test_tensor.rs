@@ -1,14 +1,20 @@
 use std::rc::Rc;
 
-use minitorch_rs::tensor::{Tensor};
-use minitorch_rs::tensor_autodiff::{maybe_reduce_broadcast, TensorGraph, TensorNodeId, TensorOp};
+use minitorch_rs::tensor::Tensor;
+use minitorch_rs::tensor_autodiff::{
+    TensorGraph, TensorNodeId, TensorOp, maybe_reduce_broadcast,
+};
 use minitorch_rs::tensor_data::TensorData;
 
 /// Compare a TensorData's logical contents (respecting strides) against an
 /// expected shape and row-major-ordered value list. Use this instead of
 /// peeking at `storage` directly so the assertion works regardless of the
 /// physical layout the function under test happens to produce.
-fn assert_data_eq(actual: &TensorData, expected_shape: &[usize], expected_values: &[f64]) {
+fn assert_data_eq(
+    actual: &TensorData,
+    expected_shape: &[usize],
+    expected_values: &[f64],
+) {
     assert_eq!(
         &actual.shape[..],
         expected_shape,
@@ -16,7 +22,8 @@ fn assert_data_eq(actual: &TensorData, expected_shape: &[usize], expected_values
         actual.shape,
         expected_shape,
     );
-    let collected: Vec<f64> = actual.iter_indices().map(|idx| actual.get(&idx)).collect();
+    let collected: Vec<f64> =
+        actual.iter_indices().map(|idx| actual.get(&idx)).collect();
     assert_eq!(
         collected, expected_values,
         "values mismatch: got {:?}, expected {:?}",
@@ -109,13 +116,14 @@ fn test_apply_preserves_variant_payload() {
     let a = g.add_leaf(Rc::new(TensorData::zeros(vec![2, 3])));
     let out_data = Rc::new(TensorData::zeros(vec![3]));
     let s = g.apply(
-        TensorOp::Sum { dim: 0, orig_shape: vec![2, 3] },
+        TensorOp::Sum {
+            orig_shape: vec![2, 3],
+        },
         out_data,
         vec![a],
     );
     match &g.nodes[s.0].op {
-        TensorOp::Sum { dim, orig_shape } => {
-            assert_eq!(*dim, 0);
+        TensorOp::Sum { orig_shape } => {
             assert_eq!(orig_shape, &vec![2, 3]);
         }
         _ => panic!("expected Sum variant"),
@@ -382,4 +390,59 @@ fn test_maybe_reduce_broadcast_preserves_already_size_one_dim() {
     let grad = TensorData::new(vec![1.0, 2.0, 3.0], vec![1, 3]);
     let out = maybe_reduce_broadcast(&grad, &[1, 3]);
     assert_data_eq(&out, &[1, 3], &[1.0, 2.0, 3.0]);
+}
+
+// ===================================================================
+// Adversarial tests — designed to catch missing structural invariants
+// the happy-path .get()-based tests don't notice
+// ===================================================================
+
+// maybe_reduce_broadcast must reach target_shape exactly. If a non-1 dim
+// mismatches (target [2], grad [4]), neither the rank-strip while-loop nor
+// the size-1 collapse for-loop fires, and the function would silently return
+// a wrong-shape tensor. The trailing assert_eq! must catch this.
+#[test]
+#[should_panic(expected = "result shape")]
+fn test_maybe_reduce_broadcast_panics_on_unreachable_target() {
+    let grad = TensorData::new(vec![1.0, 2.0, 3.0, 4.0], vec![4]);
+    let _ = maybe_reduce_broadcast(&grad, &[2]);
+}
+
+// Same shape, but the rank mismatches with neither a size-1 nor a
+// strippable leading dim — e.g. target [2,2] vs grad [3,3]. The for-loop
+// finds no target_shape[i] == 1 && result.shape[i] > 1 pair, so no
+// reduction fires. Must trip the final shape assert.
+#[test]
+#[should_panic(expected = "result shape")]
+fn test_maybe_reduce_broadcast_panics_on_non_unit_mismatch() {
+    let grad = TensorData::new(vec![1.0; 9], vec![3, 3]);
+    let _ = maybe_reduce_broadcast(&grad, &[2, 2]);
+}
+
+// TensorData::contiguous must guarantee storage tightness on the early-
+// return path, not just stride/offset correctness. A tensor with
+// contiguous strides + offset 0 but oversized storage should be
+// materialized (or at least not handed back as-is via the fast path).
+#[test]
+fn test_contiguous_does_not_shortcircuit_on_oversized_storage() {
+    use std::rc::Rc;
+    // shape [2,2], contiguous strides, offset 0, but storage has 6 elements
+    // (the trailing 2 are "stale" from some earlier op).
+    let oversized = TensorData {
+        storage: Rc::new(vec![1.0, 2.0, 3.0, 4.0, 999.0, 999.0]),
+        storage_offset: 0,
+        shape: vec![2, 2],
+        strides: vec![2, 1],
+    };
+    let out = oversized.contiguous();
+    // Critical: storage must be tight after contiguous().
+    assert_eq!(
+        out.storage.len(),
+        4,
+        "contiguous() must enforce storage.len() == size(), not just strides+offset"
+    );
+    // Values must reflect the logical view.
+    let collected: Vec<f64> =
+        out.iter_indices().map(|i| out.get(&i)).collect();
+    assert_eq!(collected, vec![1.0, 2.0, 3.0, 4.0]);
 }

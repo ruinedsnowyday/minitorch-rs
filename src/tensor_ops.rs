@@ -25,12 +25,10 @@ pub struct SimpleOps;
 
 impl TensorOps for SimpleOps {
     fn map(input: &TensorData, f: impl Fn(f64) -> f64) -> TensorData {
-        TensorData {
-            storage: Rc::new(input.storage.iter().map(|&x| f(x)).collect()),
-            storage_offset: input.storage_offset,
-            shape: input.shape.clone(),
-            strides: input.strides.clone(),
-        }
+        TensorData::new(
+            input.iter_indices().map(|idx| f(input.get(&idx))).collect(),
+            input.shape.clone(),
+        )
     }
 
     fn zip(

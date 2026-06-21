@@ -487,3 +487,59 @@ fn test_simpleops_matmul_panics_on_inner_dim_mismatch() {
     let b = TensorData::new(vec![1.0; 20], vec![4, 5]); // 3 vs 4
     let _ = SimpleOps::matmul(&a, &b);
 }
+
+// ===================================================================
+// Adversarial tests — designed to fail on incorrect implementations
+// that happen to produce the right .get() values but violate
+// structural invariants (storage tightness, aliasing, etc.)
+// ===================================================================
+
+// A correct map must produce a fresh row-major Vec of length product(shape),
+// regardless of the input's layout. The pre-fix impl iterated the input's
+// underlying Vec, so an oversized backing storage (e.g. from a slice) would
+// propagate verbatim — values via .get() looked right but storage.len() was
+// wrong, which is a footgun for any future set()/in-place op.
+#[test]
+fn test_simpleops_map_on_offset_input_produces_tight_storage() {
+    use std::rc::Rc;
+    // Logical view is shape [2,2] starting at storage offset 2 of a 7-element
+    // backing Vec. Logical values: [1, 2, 3, 4].
+    let raw = TensorData {
+        storage: Rc::new(vec![999., 999., 1., 2., 3., 4., 999.]),
+        storage_offset: 2,
+        shape: vec![2, 2],
+        strides: vec![2, 1],
+    };
+    let out = SimpleOps::map(&raw, |x| x + 10.0);
+
+    // Logical values must reflect the input view (not the backing buffer).
+    let collected: Vec<f64> =
+        out.iter_indices().map(|i| out.get(&i)).collect();
+    assert_eq!(collected, vec![11., 12., 13., 14.]);
+    // Structural: storage tight, offset reset, strides contiguous.
+    assert_eq!(out.storage.len(), 4, "storage must be tight to logical size");
+    assert_eq!(out.storage_offset, 0);
+    assert_eq!(out.strides, vec![2, 1]);
+}
+
+// Broadcasting produces stride-0 views where one storage cell aliases many
+// logical positions. A correct map must materialize distinct cells; the
+// pre-fix impl preserved the aliasing.
+#[test]
+fn test_simpleops_map_on_broadcast_view_materializes_distinct_cells() {
+    let scalar = TensorData::new(vec![5.0], vec![1]);
+    let broadcast = scalar.broadcast_to(&[3]); // stride [0], storage.len() = 1
+    let out = SimpleOps::map(&broadcast, |x| x * 2.0);
+
+    assert_eq!(out.shape, vec![3]);
+    let collected: Vec<f64> =
+        out.iter_indices().map(|i| out.get(&i)).collect();
+    assert_eq!(collected, vec![10., 10., 10.]);
+    // The critical assertion — three distinct storage cells, not one alias.
+    assert_eq!(
+        out.storage.len(),
+        3,
+        "broadcast map output must not preserve stride-0 aliasing"
+    );
+    assert_eq!(out.strides, vec![1]);
+}
