@@ -1,0 +1,224 @@
+# Roadmap
+
+This document tracks what's been built, what's planned, and where the
+scope reaches beyond Sasha Rush's original five-module minitorch.
+
+The original minitorch (`docs/minitorch-original/`) ends at module 4 — a
+CNN trained on MNIST. This project follows that path for parity, adds a
+CUDA side quest already specified in `CLAUDE.md`, and then extends into
+territory minitorch doesn't cover: modern optimizers, attention,
+quantization, and packaging. Phase 1 hits parity; phase 2 modernizes;
+phase 3 is aspirational and explicitly optional.
+
+Each module names a deliverable (the visible artifact when it's done) and
+the **learn-yourself surface** vs the **AI-free-speed surface** so the
+discipline established in CLAUDE.md transfers without restating it.
+
+---
+
+## Status today
+
+| Module | Topic | State |
+|---|---|---|
+| 0 | Fundamentals (operators, Module tree) | ✅ done |
+| 1 | Scalar autodiff (tape, backprop, chain rule) | ✅ done |
+| 2 | Tensors + tensor autodiff (forward + backward, all ops) | ✅ done |
+| 3 | Efficiency: parallel CPU + GPU backends | ⬜ next |
+| 3.5 | CUDA tiled matmul side quest | ⬜ next, after 3 |
+| 4 | NN layers + train a CNN on MNIST | ⬜ planned |
+| 5+ | Scope expansions — see phase 2 | 🔮 proposed |
+
+Source of truth for "done": `git log`. Source of truth for "what to
+implement yourself": `CLAUDE.md`'s ten-item core list.
+
+---
+
+## Phase 1 — Reach minitorch parity
+
+### Module 3 — Efficiency (parallel CPU + wgpu GPU)
+
+**Deliverable.** A `FastOps` backend (Rayon) and a `GpuOps` backend (wgpu
++ WGSL shaders) that implement the same `TensorOps` trait as `SimpleOps`.
+Backend choice via type alias or trait generics. All existing tests pass
+against any backend. A benchmark suite (`cargo bench`, criterion) shows
+speedup on representative ops vs the naive backend.
+
+**Learn-yourself.** The parallel/GPU map/zip/reduce/matmul. The WGSL
+compute kernels themselves. The trait-generic backend abstraction.
+
+**AI-free-speed.** wgpu device/adapter/queue setup. Buffer management.
+Criterion harness. CI for both backends.
+
+**Prerequisite.** Module 2 (done). The `TensorOps` trait already in place.
+
+---
+
+### Module 3.5 — CUDA tiled matmul (side quest)
+
+Already specified in CLAUDE.md. Implement one kernel — tiled matrix
+multiplication with shared memory — natively for CUDA via either Rust CUDA
+(preferred) or cudarc (fallback). Produces the four-way matmul benchmark:
+naive CPU → Rayon → wgpu → CUDA.
+
+**Learn-yourself.** The CUDA kernel. Memory hierarchy, warps, bank
+conflicts, occupancy.
+
+**AI-free-speed.** Toolchain setup, host-side launch wrappers, NVRTC
+plumbing.
+
+**Prerequisite.** Module 3 (need wgpu matmul to compare against).
+
+---
+
+### Module 4 — Networks
+
+**Deliverable.** `conv1d`, `conv2d`, max-pool, softmax (numerically
+stable), dropout. A LeNet-style CNN trained to >95% on MNIST. A small NLP
+sentiment classifier (per original minitorch). Loss/optim built on top of
+existing `Tensor::backward` and a basic SGD step.
+
+**Learn-yourself.** The conv forward (im2col or direct), conv backward,
+pooling backward (argmax routing), the categorical-cross-entropy fused
+softmax+log+NLL trick. The training loop that ties everything together.
+
+**AI-free-speed.** MNIST loader (the IDX file format parser), batching
+machinery, progress logging, run-to-run plot generation.
+
+**Prerequisite.** Modules 2 and 3.
+
+---
+
+## Phase 2 — Beyond minitorch (modernization)
+
+These are not in the original five-module sequence but flow naturally from
+the foundation. Each is self-contained — pick any subset.
+
+### Module 5 — Modern optimizers and training infrastructure
+
+minitorch only ships SGD. Real training needs more.
+
+**Deliverable.** SGD with momentum, Adam, AdamW. Learning-rate schedulers
+(cosine, linear warmup). Gradient clipping. Checkpoint save/load via
+safetensors (or a simple bincode format). Mixed precision flag (CPU
+no-op; meaningful when paired with module 3's GPU backend).
+
+**Learn-yourself.** The optimizer math (momentum buffers, bias-corrected
+moment estimates for Adam). The interaction between gradient clipping
+and accumulation. The checkpoint format design — what gets saved, how
+shapes are validated on load.
+
+**AI-free-speed.** Serialization glue, file I/O, format detection.
+
+---
+
+### Module 6 — Attention and a small language model
+
+The single biggest gap between "I built a CNN" and "I understand modern
+ML" is the attention mechanism. minitorch predates the LLM era; this
+module closes it.
+
+**Deliverable.** Token embeddings, positional encodings (sinusoidal +
+learned options). Scaled dot-product attention. Multi-head attention.
+A transformer block (attention + MLP + layer norm + residuals). A tiny
+GPT (~10M params) trained on Tiny Shakespeare. Generation via greedy +
+top-k sampling.
+
+**Learn-yourself.** Why attention's gradient flows the way it does (it's
+just matmul + softmax — both already in the framework). The masking trick
+for causal attention. Layer norm's forward and backward. Why the residual
+connection matters for gradient flow.
+
+**AI-free-speed.** Tokenizer (BPE is overkill; character-level or a
+pretrained tokenizer crate is fine). Text data loading. Sampling /
+generation loop.
+
+**Prerequisite.** Modules 2 (matmul, softmax), 4 (loss machinery), 5
+(Adam — SGD won't train a transformer well).
+
+---
+
+### Module 7 — Quantization and inference efficiency
+
+**Deliverable.** Int8 weight quantization (post-training, per-channel).
+A quantized matmul kernel (one each for CPU and GPU). A tiny benchmark
+showing model size shrink + inference speedup with bounded accuracy loss
+on MNIST or the module-6 LM. Optionally: a custom fused kernel via
+CubeCL or Rust GPU.
+
+**Learn-yourself.** The quantize/dequantize math. Why per-channel beats
+per-tensor. The int8 matmul rules (accumulator dtype, scale arithmetic).
+Bank-conflict-free kernel design.
+
+**AI-free-speed.** Calibration data plumbing, accuracy-vs-size reporting,
+the bookkeeping that pairs weights with their scales.
+
+**Prerequisite.** Modules 3 (GPU backend exists) and 4 (a trained model
+to quantize).
+
+---
+
+## Phase 3 — Aspirational (explicit stretch)
+
+The honest framing on these: each is a real project on its own. Pick at
+most one as a finale; the others can stay roadmap items forever and
+that's fine.
+
+### Module 8 — Multi-device training
+
+Synchronous data-parallel training across multiple wgpu adapters (or
+multi-CPU-process for clarity without GPU dependency). AllReduce
+implemented as a compute shader. A demo showing linear-ish speedup on a
+2-device matmul or training step. This is where the trait-generic backend
+abstraction earns its keep.
+
+### Module 9 — A served model
+
+Load a checkpoint, expose inference over HTTP with `axum` or `actix`,
+batch requests, stream tokens for the LM. The "you can put this in front
+of a user" exit.
+
+### Module 10 — Comparative profiling
+
+Run the same workload across `SimpleOps`, `FastOps`, `GpuOps`, `CudaOps`,
+Burn, and candle. Identify where the framework loses to and beats
+production options. Honest writeup; this is what makes the project a
+genuine portfolio piece rather than a tutorial completion.
+
+---
+
+## Cross-cutting infrastructure
+
+Worth doing whenever it pays for itself, not gated to any module:
+
+- **Property-based tests** (`proptest`) for tensor invariants — broadcast
+  shape, stride math, grad-check equivalences across backends.
+- **`cargo bench` discipline** (criterion) for every backend op once
+  there's more than one backend to compare.
+- **CI matrix** — at minimum `cargo test` on Linux+macOS, ideally also a
+  wgpu test path once module 3 lands.
+- **A `docs/learning-log.md`** capturing concepts mastered per module —
+  the artifact that turns this from "code that exists" into "evidence the
+  learning happened." `CLAUDE.md` calls this out; it doesn't exist yet.
+
+---
+
+## How to read this roadmap
+
+This is a living document. Things shift. The phase numbers are ordering,
+not a contract — if module 6 (attention + LM) sounds more motivating than
+module 4 (CNN on MNIST), you can swap them; the prerequisites are honest
+about what actually blocks what.
+
+Two rules to keep the discipline:
+
+1. **A module is "done" when its deliverable runs, not when its code
+   compiles.** A CNN that trains to 95% on MNIST is done. A trait that
+   compiles but has no benchmark proving the backend works is not.
+
+2. **Don't start the next module before the current one's deliverable
+   exists.** The temptation to write the transformer before finishing the
+   CNN is real; both modules teach more if you finish in order.
+
+The CLAUDE.md ten-item core list still governs what's AI-implementable
+within each module. This roadmap names *what* to build; CLAUDE.md governs
+*how* to build it.
