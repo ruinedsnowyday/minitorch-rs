@@ -1,0 +1,18 @@
+# Compile for the exact CPU this build runs on, so std::simd lowers to the widest
+# vector ISA each machine has — NEON on Apple Silicon, AVX2 on the Colab host,
+# AVX-512 on the remote box — without passing RUSTFLAGS by hand each run.
+#
+# `native` bakes in host CPU features, so the binary is NOT portable to older
+# CPUs. That's fine here: this is a dev/benchmark project, never shipped as a
+# binary. Each machine builds for itself, so a full sweep run per machine stays a
+# valid apples-to-apples comparison.
+#
+# Gotcha: an explicit RUSTFLAGS env var REPLACES these flags (cargo does not merge
+# them). When you run the SIMD asm / pass-remarks verification with a custom
+# RUSTFLAGS, include `-C target-cpu=native` there too, or you'll silently get
+# SSE2-only codegen with no wide vectors.
+#
+# To force a controlled AVX2-vs-AVX-512 comparison on the *same* x86 box, cap the
+# ISA per run:  RUSTFLAGS="-C target-cpu=x86-64-v3" cargo bench   (caps at AVX2)
+[build]
+rustflags = ["-C", "target-cpu=native"]
