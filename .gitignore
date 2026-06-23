@@ -4,5 +4,9 @@ CLAUDE.md
 CLAUDE.local.md
 rustfmt.toml
 
+# Local editor config (machine-specific: .clangd hardcodes ~/cuda-toolkit)
+.clangd
+.cache/
+
 # Third-party reference: original minitorch course pages
 docs/minitorch-original/

@@ -5,6 +5,22 @@ edition = "2024"
 
 [dependencies]
 rand = "0.9"
+rayon = "1.12"
+# Module 3 CUDA backend. Gated behind `--features cuda` so the default build
+# (e.g. on macOS with no CUDA) never compiles it. `dynamic-loading` dlopen's the
+# driver at runtime, so the host side compiles without a CUDA toolkit present;
+# the `cuda-12060` version feature must match Colab's toolkit (`nvcc --version`).
+cudarc = { version = "0.19", optional = true, default-features = false, features = [
+    "cuda-12060",
+    "driver",
+    "nvrtc",
+    "std",
+    "dynamic-loading",
+] }
 
 [dev-dependencies]
 proptest = "1"
+criterion = { version = "0.8", features = ["html_reports"] }
+
+[features]
+cuda = ["dep:cudarc"]
