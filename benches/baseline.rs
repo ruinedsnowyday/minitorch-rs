@@ -5,14 +5,36 @@
 //! Numbers land in `target/criterion/`, with an HTML report at
 //! `target/criterion/report/index.html`. Criterion saves each run, so after you
 //! write `FastOps` and rerun, it prints the % change against this baseline.
+//!
+//! Run length is governed by the knobs below — bump them for longer runs and
+//! tighter confidence intervals. They're set per group (matmul vs elementwise)
+//! because matmul's big size is multiple seconds per call while the elementwise
+//! ops are milliseconds; one global setting can't suit both. NOTE: per-group
+//! settings take precedence over `--measurement-time` / `--sample-size` on the
+//! CLI, so treat these constants as the source of truth.
 
 use std::hint::black_box;
+use std::time::Duration;
 
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use rand::Rng;
 
 use minitorch_rs::tensor_data::TensorData;
 use minitorch_rs::tensor_ops::{SimpleOps, TensorOps};
+
+// --- run-length knobs (bump for longer / tighter runs) ---
+// matmul: the big size is multiple seconds per call, so few samples but a long
+// measurement window — enough for those samples to finish without criterion's
+// "unable to complete N samples" warning. (matmul CIs are already very tight, so
+// raising these buys little; lower MATMUL_MEASURE if you want a quicker loop.)
+const MATMUL_SAMPLES: usize = 10;
+const MATMUL_MEASURE: Duration = Duration::from_secs(35);
+// elementwise: cheap, so the default 100 samples are affordable; the longer
+// warm-up + window let all 100 complete at 2048 and damp run-to-run outliers
+// (this is where waiting actually tightens the numbers).
+const ELEM_SAMPLES: usize = 100;
+const ELEM_WARMUP: Duration = Duration::from_secs(5);
+const ELEM_MEASURE: Duration = Duration::from_secs(15);
 
 /// A tensor of `shape` filled with uniform random f64 in [0, 1).
 fn random(shape: Vec<usize>) -> TensorData {
@@ -22,14 +44,12 @@ fn random(shape: Vec<usize>) -> TensorData {
     TensorData::new(data, shape)
 }
 
-// matmul: compute-bound. Throughput is set to the multiply-add count (~n^3) so
-// criterion reports it as elem/s — a proxy for FLOP/s that should climb as the
-// optimizations land. Sizes kept small because the naive backend is slow.
+// matmul: compute-bound. Throughput = multiply-add count (~n^3), reported as
+// elem/s — a proxy for FLOP/s that should climb as the optimizations land.
 fn bench_matmul(c: &mut Criterion) {
     let mut group = c.benchmark_group("matmul");
-    // The naive backend is slow, and 1024^3 ≈ 1.5 s per call; 10 samples (vs
-    // criterion's default 100) keeps the big size to ~15 s instead of minutes.
-    group.sample_size(10);
+    group.sample_size(MATMUL_SAMPLES);
+    group.measurement_time(MATMUL_MEASURE);
     for n in [128usize, 256, 512, 1024] {
         let a = random(vec![n, n]);
         let b = random(vec![n, n]);
@@ -41,11 +61,13 @@ fn bench_matmul(c: &mut Criterion) {
     group.finish();
 }
 
-// map / zip / reduce: bandwidth-bound. Throughput is the element count, so the
-// reported elem/s is the memory-throughput story. Bigger sizes are fine here
-// because the work is O(n), not O(n^3).
+// map / zip / reduce: bandwidth-bound. Throughput = element count, so the
+// reported elem/s is the memory-throughput story.
 fn bench_map(c: &mut Criterion) {
     let mut group = c.benchmark_group("map");
+    group.sample_size(ELEM_SAMPLES);
+    group.warm_up_time(ELEM_WARMUP);
+    group.measurement_time(ELEM_MEASURE);
     for n in [512usize, 1024, 2048] {
         let a = random(vec![n, n]);
         group.throughput(Throughput::Elements((n * n) as u64));
@@ -58,6 +80,9 @@ fn bench_map(c: &mut Criterion) {
 
 fn bench_zip(c: &mut Criterion) {
     let mut group = c.benchmark_group("zip");
+    group.sample_size(ELEM_SAMPLES);
+    group.warm_up_time(ELEM_WARMUP);
+    group.measurement_time(ELEM_MEASURE);
     for n in [512usize, 1024, 2048] {
         let a = random(vec![n, n]);
         let b = random(vec![n, n]);
@@ -71,6 +96,9 @@ fn bench_zip(c: &mut Criterion) {
 
 fn bench_reduce(c: &mut Criterion) {
     let mut group = c.benchmark_group("reduce");
+    group.sample_size(ELEM_SAMPLES);
+    group.warm_up_time(ELEM_WARMUP);
+    group.measurement_time(ELEM_MEASURE);
     for n in [512usize, 1024, 2048] {
         let a = random(vec![n, n]);
         group.throughput(Throughput::Elements((n * n) as u64));
