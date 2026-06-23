@@ -26,6 +26,7 @@ discipline established in CLAUDE.md transfers without restating it.
 | 2 | Tensors + tensor autodiff (forward + backward, all ops) | ✅ done |
 | 3 | Efficiency: Rayon + SIMD CPU, CUDA GPU backends | ⬜ next |
 | 3.5 | wgpu cross-platform retrofit (port CUDA kernels to WGSL) | ⬜ next, after 3 |
+| 3.9 | Precision control (parameterize the scalar type, f32/f64) | ⬜ next, after 3.5 |
 | 4 | NN layers + train a CNN on MNIST | ⬜ planned |
 | 5+ | Scope expansions — see phase 2 | 🔮 proposed |
 
@@ -75,6 +76,30 @@ management.
 
 **Prerequisite.** Module 3 (need the CUDA kernels to port and to compare
 against).
+
+---
+
+### Module 3.9 — Precision control (interlude)
+
+Cross-cutting infra, not a numbered curriculum module: parameterize the
+scalar type (`TensorData<T>`, a custom `Scalar` trait) so training can run
+`f32` while tests stay `f64`. Sits at the 3.5 → 4 seam — the GPU backend
+motivates it (tensor cores are ≤`f32`; `f64` is penalized on every NVIDIA
+card), Module 4 training consumes it. Full write-up:
+[module3.9-precision.md](module3.9-precision.md).
+
+**Learn-yourself.** The `Scalar` trait surface (derive it from what
+`operators.rs` / `tensor_autodiff.rs` actually call). Threading `<T>` through
+every core module. The test split (grad-checks pinned to `f64`, `f32`-vs-`f64`
+agreement at looser tolerance).
+
+**AI-free-speed.** The mechanical signature churn once the trait is fixed.
+
+**Scope fence.** `f32` + `f64` only. `bf16`/`f16` is Module 5 (mixed
+precision); `int8` is Module 7.
+
+**Prerequisite.** Module 3 (the GPU backend is what makes `f64` cost real
+performance).
 
 ---
 
