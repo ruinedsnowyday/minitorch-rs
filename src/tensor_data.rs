@@ -113,18 +113,41 @@ impl TensorData {
         }
     }
 
+    /// Checks if the tensor is stored contiguously, starts from the beginning of the
+    /// allocation, and the allocation is fully owned by the tensor
+    pub fn is_contiguous(&self) -> bool {
+        self.strides == contiguous_strides(&self.shape)
+            && self.storage_offset == 0
+            && self.storage.len() == self.size()
+    }
+
+    /// Checks if the strides of the tensor are the same as contiguous strides, i.e.
+    /// it is just stored contiguously in a row-major order
+    pub fn is_packed(&self) -> bool {
+        self.strides == contiguous_strides(&self.shape)
+    }
+
     /// Produces a new TensorData with storage being a contiguous array.
     /// Short-circuits if the array is already contiguous
     pub fn contiguous(&self) -> Self {
-        if self.strides == contiguous_strides(&self.shape)
-            && self.storage_offset == 0
-            && self.storage.len() == self.size()
-        {
+        if self.is_contiguous() {
             return self.clone();
         }
         let contiguous_storage =
             self.iter_indices().map(|idx| self.get(&idx)).collect();
         Self::new(contiguous_storage, self.shape.clone())
+    }
+
+    /// Calculates the offset of the element in storage given the ordinal. Used as a
+    /// slow path in cases when the tensor is stored non-contiguously
+    pub fn offset_at(&self, p: usize) -> usize {
+        let mut out: usize = 0;
+        let mut rem = p;
+        for (&stride, &shape) in self.strides.iter().zip(&self.shape).rev() {
+            out += (rem % shape) * stride;
+            rem /= shape;
+        }
+        out + self.storage_offset
     }
 }
 
