@@ -3,11 +3,13 @@ use minitorch_rs::loss::{bce, mse};
 
 const EPS: f64 = 1e-9;
 
-// operators::log adds a 1e-6 nudge to its argument for numerical stability,
-// so any "expected" forward value involving log drifts from the textbook
-// formula by ~1e-6. Use this looser tolerance for forward asserts that
-// flow through log; gradients are unaffected (log_back uses the un-nudged
-// 1/a) and stay on tight EPS.
+// operators::log and operators::log_back BOTH add a 1e-6 nudge for numerical
+// stability: log(a) = (a + 1e-6).ln() and log_back uses 1/(a + 1e-6). So any
+// "expected" value that flows through log — forward OR gradient — drifts from
+// the textbook formula by ~1e-6. Compare those against textbook values at this
+// looser tolerance, not the tight EPS. (The autodiff-vs-central-difference
+// check is what actually proves backward correctness; the textbook-value
+// asserts are a secondary sanity check and must tolerate the nudge.)
 const LOG_TOL: f64 = 1e-5;
 
 fn close(a: f64, b: f64) -> bool {
@@ -155,8 +157,9 @@ fn test_bce_gradient_matches_central_difference() {
     let numerical_grad = central_difference(f, &[0.6], 0, 1e-6);
 
     assert!((autodiff_grad - numerical_grad).abs() < 1e-5);
-    // analytical sanity: (0.6 - 1) / (0.6 * 0.4) = -5/3
-    assert!((autodiff_grad - (-5.0 / 3.0)).abs() < 1e-9);
+    // analytical sanity: (0.6 - 1) / (0.6 * 0.4) = -5/3, drifted by the
+    // log_back nudge so checked at LOG_TOL rather than tight EPS.
+    assert!((autodiff_grad - (-5.0 / 3.0)).abs() < LOG_TOL);
 }
 
 // Gradients flow back through predecessors of pred.
@@ -181,8 +184,9 @@ fn test_bce_gradient_chains_through_predecessors() {
     assert!(close(graph.get_node(pred).out, 0.4));
     assert!(close_with(graph.get_node(loss_id).out, -(0.4_f64).ln(), LOG_TOL));
 
-    // gradients
-    assert!(close(graph.get_node(pred).gradient, -2.5));
-    assert!(close(graph.get_node(a).gradient, -2.0));
-    assert!(close(graph.get_node(b).gradient, -1.25));
+    // gradients — textbook values, drifted by the log_back nudge, so
+    // checked at LOG_TOL rather than tight EPS.
+    assert!(close_with(graph.get_node(pred).gradient, -2.5, LOG_TOL));
+    assert!(close_with(graph.get_node(a).gradient, -2.0, LOG_TOL));
+    assert!(close_with(graph.get_node(b).gradient, -1.25, LOG_TOL));
 }
