@@ -1,12 +1,13 @@
 pub mod autodiff;
 pub mod datasets;
+pub mod fast_ops;
 pub mod loss;
 pub mod module;
 pub mod nn;
 pub mod operators;
-pub mod xor_network;
-pub mod train;
-pub mod tensor_data;
-pub mod tensor_ops;
 pub mod tensor;
 pub mod tensor_autodiff;
+pub mod tensor_data;
+pub mod tensor_ops;
+pub mod train;
+pub mod xor_network;
