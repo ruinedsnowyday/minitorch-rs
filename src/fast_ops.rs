@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+
 use crate::{
     tensor_data::{TensorData, offset_at},
     tensor_ops::{TensorOps, broadcast_shape, broadcast_strides},
@@ -10,17 +12,22 @@ use crate::{
 pub struct FastOps;
 
 impl TensorOps for FastOps {
-    fn map(input: &TensorData, f: impl Fn(f64) -> f64) -> TensorData {
+    fn map(input: &TensorData, f: impl Fn(f64) -> f64 + Send + Sync) -> TensorData {
         let offset = input.storage_offset;
         let size = input.size();
         let storage = if input.is_packed() {
             input.storage[offset..offset + size]
-                .iter()
+                .par_iter()
                 .map(|&x| f(x))
                 .collect()
         } else {
+            let data: &[f64] = &input.storage[..];
+            let offset = input.storage_offset;
+            let shape: &[usize] = &input.shape[..];
+            let strides: &[usize] = &input.strides[..];
             (0..size)
-                .map(|p| f(input.storage[input.offset_at(p)]))
+                .into_par_iter()
+                .map(|idx| f(data[offset_at(idx, offset, shape, strides)]))
                 .collect()
         };
         TensorData::new(storage, input.shape.clone())
