@@ -1,6 +1,8 @@
+use std::rc::Rc;
+
 use crate::{
-    tensor_data::{TensorData, iter_indices_of_shape, offset_at},
-    tensor_ops::{TensorOps, broadcast_shape},
+    tensor_data::{TensorData, offset_at},
+    tensor_ops::{TensorOps, broadcast_shape, broadcast_strides},
 };
 
 /// Tensor operations optimized for multi-core execution, SIMD, and limited allocation
@@ -97,6 +99,107 @@ impl TensorOps for FastOps {
     }
 
     fn matmul(a: &TensorData, b: &TensorData) -> TensorData {
-        todo!()
+        assert!(
+            a.ndim() >= 2 && b.ndim() >= 2,
+            "matmul: both operands need >= 2 dims, got shapes {:?} and {:?}",
+            a.shape,
+            b.shape
+        );
+        let a_batch_shape = &a.shape[..a.ndim() - 2];
+        let b_batch_shape = &b.shape[..b.ndim() - 2];
+        let out_batch_shape = broadcast_shape(a_batch_shape, b_batch_shape);
+        let (m, n) = (a.shape[a.ndim() - 2], b.shape[b.ndim() - 1]);
+        let k = a.shape[a.ndim() - 1];
+        assert_eq!(a.shape[a.ndim() - 1], b.shape[b.ndim() - 2]);
+        let mut out_shape = out_batch_shape.clone();
+        out_shape.extend_from_slice(&[m, n]);
+
+        let a_batch_strides = broadcast_strides(
+            a_batch_shape,
+            &a.strides[..a.ndim() - 2],
+            &out_batch_shape,
+        );
+        let b_batch_strides = broadcast_strides(
+            b_batch_shape,
+            &b.strides[..b.ndim() - 2],
+            &out_batch_shape,
+        );
+        let out_size = out_shape.iter().product();
+        let n_batches = out_batch_shape.iter().product();
+
+        let mut out_storage: Vec<f64> = Vec::with_capacity(out_size);
+        for batch in 0..n_batches {
+            let a_off = offset_at(
+                batch,
+                a.storage_offset,
+                &out_batch_shape,
+                &a_batch_strides,
+            );
+            let b_off = offset_at(
+                batch,
+                b.storage_offset,
+                &out_batch_shape,
+                &b_batch_strides,
+            );
+
+            // build 2D views that share storage with a and b
+            let a_2d = TensorData {
+                storage: Rc::clone(&a.storage),
+                storage_offset: a_off,
+                shape: vec![m, k],
+                strides: vec![a.strides[a.ndim() - 2], a.strides[a.ndim() - 1]],
+            };
+            let b_2d = TensorData {
+                storage: Rc::clone(&b.storage),
+                storage_offset: b_off,
+                shape: vec![k, n],
+                strides: vec![b.strides[b.ndim() - 2], b.strides[b.ndim() - 1]],
+            };
+
+            let mat = matmul_2d(&a_2d, &b_2d);
+            out_storage.extend_from_slice(&mat.storage);
+        }
+        TensorData::new(out_storage, out_shape)
     }
+}
+
+/// FastOps implementation of [M, K] x [K, N] matrix multiplication
+fn matmul_2d(a: &TensorData, b: &TensorData) -> TensorData {
+    assert!(
+        a.ndim() == 2 && b.ndim() == 2,
+        "expected input tensors to be 2D, got shapes {:?} and {:?}",
+        a.shape,
+        b.shape
+    );
+    assert_eq!(
+        a.shape[1], b.shape[0],
+        "can't multiply matrices with shapes {:?} and {:?}",
+        a.shape, b.shape
+    );
+    let m = a.shape[0];
+    let (k, n) = (b.shape[0], b.shape[1]);
+    let a_holder: TensorData;
+    let b_holder: TensorData;
+    let a_storage = if a.is_packed() {
+        &a.storage[a.storage_offset..a.storage_offset + m * k]
+    } else {
+        a_holder = a.contiguous();
+        &a_holder.storage[..]
+    };
+    let b_storage = if b.is_packed() {
+        &b.storage[b.storage_offset..b.storage_offset + k * n]
+    } else {
+        b_holder = b.contiguous();
+        &b_holder.storage[..]
+    };
+    let mut out_storage: Vec<f64> = vec![0.; m * n];
+    for i in 0..m {
+        for p in 0..k {
+            let a_ip = a_storage[i * k + p];
+            for j in 0..n {
+                out_storage[i * n + j] += a_ip * b_storage[p * n + j];
+            }
+        }
+    }
+    TensorData::new(out_storage, vec![m, n])
 }

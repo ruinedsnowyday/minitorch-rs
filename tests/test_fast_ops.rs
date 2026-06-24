@@ -387,3 +387,89 @@ proptest! {
         }
     }
 }
+
+// ===================================================================
+// matmul — cross-backend equivalence
+// ===================================================================
+
+// A `shape`-sized tensor filled with 0,1,2,... (+start). Small integers keep
+// products/sums exact in f64, so storage comparison is bit-exact.
+fn seq(shape: Vec<usize>, start: usize) -> TensorData {
+    let n: usize = shape.iter().product();
+    TensorData::new((0..n).map(|i| (start + i) as f64).collect(), shape)
+}
+
+fn assert_matmul_matches_oracle(a: &TensorData, b: &TensorData) {
+    let fast = FastOps::matmul(a, b);
+    let simple = SimpleOps::matmul(a, b);
+    assert_eq!(
+        fast.shape, simple.shape,
+        "shape mismatch: a={:?} b={:?}",
+        a.shape, b.shape
+    );
+    assert_eq!(
+        &*fast.storage, &*simple.storage,
+        "storage mismatch: a(shape={:?} strides={:?}) b(shape={:?} strides={:?})",
+        a.shape, a.strides, b.shape, b.strides
+    );
+}
+
+// Hand-computed anchor: [[1,2,3],[4,5,6]] · [[1,2],[3,4],[5,6]].
+#[test]
+fn test_matmul_2d_hand_computed() {
+    let a = TensorData::new(vec![1., 2., 3., 4., 5., 6.], vec![2, 3]);
+    let b = TensorData::new(vec![1., 2., 3., 4., 5., 6.], vec![3, 2]);
+    let c = FastOps::matmul(&a, &b);
+    assert_eq!(c.shape, vec![2, 2]);
+    // row0 = [1·1+2·3+3·5, 1·2+2·4+3·6] = [22, 28]
+    // row1 = [4·1+5·3+6·5, 4·2+5·4+6·6] = [49, 64]
+    assert_eq!(&*c.storage, &vec![22., 28., 49., 64.]);
+}
+
+#[test]
+fn test_matmul_2d_nonsquare() {
+    assert_matmul_matches_oracle(&seq(vec![2, 3], 0), &seq(vec![3, 4], 1));
+    assert_matmul_matches_oracle(&seq(vec![5, 2], 0), &seq(vec![2, 7], 3));
+}
+
+#[test]
+fn test_matmul_batched() {
+    assert_matmul_matches_oracle(&seq(vec![4, 2, 3], 0), &seq(vec![4, 3, 2], 1));
+}
+
+// Batch-dim broadcasting: a 2-D operand reused across the other's batch, and
+// an explicit size-1 batch dim.
+#[test]
+fn test_matmul_broadcast_batch() {
+    assert_matmul_matches_oracle(&seq(vec![2, 3], 0), &seq(vec![4, 3, 2], 1));
+    assert_matmul_matches_oracle(&seq(vec![4, 2, 3], 0), &seq(vec![3, 2], 1));
+    assert_matmul_matches_oracle(&seq(vec![1, 2, 3], 0), &seq(vec![4, 3, 2], 1));
+}
+
+// Transposed (non-packed) operands → matmul_2d's contiguous() fallback. The
+// b-transposed case is exactly what the old `a.is_packed()` typo got wrong.
+#[test]
+fn test_matmul_transposed_operands() {
+    let a = seq(vec![2, 3], 0);
+    let b_t = seq(vec![2, 3], 1).permute(&[1, 0]); // [3,2], strided
+    assert_matmul_matches_oracle(&a, &b_t);
+
+    let a_t = seq(vec![3, 2], 0).permute(&[1, 0]); // [2,3], strided
+    assert_matmul_matches_oracle(&a_t, &seq(vec![3, 4], 1));
+
+    let a_t2 = seq(vec![3, 2], 0).permute(&[1, 0]); // [2,3]
+    let b_t2 = seq(vec![2, 3], 5).permute(&[1, 0]); // [3,2]
+    assert_matmul_matches_oracle(&a_t2, &b_t2);
+}
+
+proptest! {
+    #[test]
+    fn prop_matmul_matches_simpleops(m in 1usize..=5, k in 1usize..=5, n in 1usize..=5) {
+        let a = seq(vec![m, k], 0);
+        let b = seq(vec![k, n], 1);
+        let fast = FastOps::matmul(&a, &b);
+        let simple = SimpleOps::matmul(&a, &b);
+        prop_assert_eq!(&fast.shape, &simple.shape);
+        prop_assert_eq!(&*fast.storage, &*simple.storage);
+    }
+}
