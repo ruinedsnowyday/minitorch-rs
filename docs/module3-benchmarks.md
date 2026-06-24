@@ -4,9 +4,9 @@ Tracking the same ops across backends as Module 3 progresses. **A speedup
 comparison is only valid within one machine.**
 
 Topology (settled):
-- **CPU columns** — naive → Rayon → Rayon+SIMD — all on the **Xeon w9-3495X**
-  (full AVX-512, 56 cores). One machine, so the CPU progression is a valid
-  apples-to-apples speedup.
+- **CPU columns** — naive → serial fast path → Rayon → Rayon+SIMD — all on the
+  **Xeon w9-3495X** (full AVX-512, 56 cores). One machine, so the CPU progression
+  is a valid apples-to-apples speedup.
 - **GPU columns** — CUDA (and later the wgpu retrofit) — on **Colab** (A100/H100).
 - The **CPU → GPU step is a device crossover**, not a same-machine speedup. Label
   it as such; it compares "best CPU effort" vs "GPU", which is the point.
@@ -71,6 +71,96 @@ Topology (settled):
 - Cross-cutting: the leaner an op's per-element overhead, the more the memory
   hierarchy is visible in its scaling. matmul (heaviest overhead) is flattest;
   reduce (leanest) is the most size-sensitive.
+
+## After contiguous fast path (serial `FastOps`)
+
+- Machine: same Xeon w9-3495X as the baseline. Still **single-threaded** — no
+  Rayon, no explicit SIMD yet. `target-cpu=native` is on, so the compiler
+  auto-vectorizes the dependency-free loops (map/zip, matmul's hoisted AXPY); it
+  can *not* auto-vectorize the reductions (f64 non-associativity blocks
+  reassociation).
+- Tool: `cargo bench` (criterion 0.8) · `benches/baseline.rs`, comparing
+  `simple/<n>` vs `fast/<n>` in one run. The `simple` column reproduced the
+  recorded baseline within noise, confirming same-machine comparability.
+- Date: 2026-06-24
+- `FastOps` keeps the same `TensorOps` contract; the only change is a contiguous
+  fast path (slice-iterate packed tensors) plus `offset_at` for the strided path
+  — no per-element `Vec` alloc, no `flat_index` per access. Speedups below are
+  `fast` vs `simple` from the same run.
+
+**matmul** (≈ n³ multiply-adds):
+
+| n    | time    | throughput   | speedup |
+|------|---------|--------------|---------|
+| 128  | 549 µs  | 3.81 Gelem/s | 10.9×   |
+| 256  | 3.16 ms | 5.30 Gelem/s | 14.9×   |
+| 512  | 38.0 ms | 3.54 Gelem/s | 10.1×   |
+| 1024 | 330 ms  | 3.25 Gelem/s |  9.1×   |
+
+**map**:
+
+| n    | time    | throughput   | speedup |
+|------|---------|--------------|---------|
+| 512  | 155 µs  | 1.69 Gelem/s | 25.3×   |
+| 1024 | 620 µs  | 1.69 Gelem/s | 25.7×   |
+| 2048 | 10.8 ms | 388 Melem/s  |  6.9×   |
+
+**zip**:
+
+| n    | time    | throughput   | speedup |
+|------|---------|--------------|---------|
+| 512  | 227 µs  | 1.15 Gelem/s | 21.3×   |
+| 1024 | 913 µs  | 1.15 Gelem/s | 21.3×   |
+| 2048 | 12.6 ms | 334 Melem/s  |  7.1×   |
+
+**reduce, dim 0** (strided fiber — walks columns, stride n):
+
+| n    | time    | throughput  | speedup |
+|------|---------|-------------|---------|
+| 512  | 769 µs  | 341 Melem/s | 1.9×    |
+| 1024 | 5.73 ms | 183 Melem/s | 1.3×    |
+| 2048 | 23.0 ms | 182 Melem/s | 1.4×    |
+
+**reduce, dim 1** (contiguous fiber — stride 1):
+
+| n    | time    | throughput  | speedup |
+|------|---------|-------------|---------|
+| 512  | 714 µs  | 367 Melem/s | 1.1×    |
+| 1024 | 2.89 ms | 363 Melem/s | 1.1×    |
+| 2048 | 11.6 ms | 361 Melem/s | 1.1×    |
+
+### Reading the fast path
+
+Each op's speedup is a fingerprint of *what its bottleneck actually was* — and
+only the overhead-bound parts got the big win:
+
+- **matmul: ~10× and now compute-bound.** Killing the per-access `get()` unlocked
+  the hoisted AXPY inner loop, which auto-vectorizes under `target-cpu=native` →
+  3–5 Gelem/s (~7–11 GFLOP/s). Notice it's no longer perfectly flat: it *peaks at
+  256* (5.3 Gelem/s, all three matrices fit L2) and tapers by 1024 as the reused
+  operand spills cache. The overhead-bound baseline hid this; with overhead gone,
+  even matmul shows a mild cache profile.
+- **map / zip: ~20–25× while cache-resident, collapsing to ~7× at 2048.** At
+  512/1024 the data fits cache and the contiguous loop vectorizes → 1.1–1.7
+  Gelem/s. At 2048 (33.5 MB) it spills to DRAM and goes **bandwidth-bound**
+  (388 / 334 Melem/s); removing overhead can't push past the memory ceiling. The
+  speedup shrank because the bottleneck *moved* — overhead (fixed) → bandwidth
+  (not). This is the cache cliff the baseline predicted, now sharper.
+- **reduce: small win, two distinct causes.**
+  - *dim 0* is a strided column walk (stride n): cache-missing, memory-bound, and
+    it degrades with size (341→182) exactly like the baseline. The fast path
+    removed overhead but not the access pattern.
+  - *dim 1* is a contiguous fiber → cache-friendly and **flat across size**
+    (~363 Melem/s) — yet still only ~1.1× over `SimpleOps`, because the ceiling is
+    now the **loop-carried f64 sum dependency**. It's non-associative, so the
+    compiler won't reassociate it into parallel adds; both backends bottleneck on
+    the same scalar add-chain, and overhead was never the cap. Breaking it needs
+    explicit multiple-accumulator SIMD (trading bit-exactness for throughput).
+- Cross-cutting setup for the next rungs: matmul (compute-bound) should scale
+  near-linearly with Rayon; map/zip's 2048 cliff is a *bandwidth* question (more
+  cores = more memory channels — does it lift?); reduce is the inversion — it's
+  SIMD-hard (dependency within a fiber) but Rayon-easy (fibers are independent
+  across output cells), so Rayon may give it the win SIMD can't.
 
 ## After Rayon
 
