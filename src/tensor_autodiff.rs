@@ -268,8 +268,11 @@ pub fn maybe_reduce_broadcast(
     while result.ndim() > target_shape.len() {
         result = SimpleOps::reduce(&result, operators::add, 0., 0, false);
     }
-    for i in 0..result.ndim() {
-        if target_shape[i] == 1 && result.shape[i] > 1 {
+    let result_shape = result.shape.clone();
+    for (i, (&target_size, result_size)) in
+        target_shape.iter().zip(result_shape).enumerate()
+    {
+        if target_size == 1 && result_size > 1 {
             result = SimpleOps::reduce(&result, operators::add, 0., i, true);
         }
     }

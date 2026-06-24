@@ -473,3 +473,62 @@ proptest! {
         prop_assert_eq!(&*fast.storage, &*simple.storage);
     }
 }
+
+// ===================================================================
+// batched_matmul — gaps the matmul tests above don't reach
+//
+// FastOps::matmul now routes to batched_matmul, so the tests above already
+// cover it — but every batched case there has m == n per matrix, and none
+// feeds the batched path a strided operand. These target precisely that.
+// ===================================================================
+
+// All of m, k, n distinct, batched. The flattened decode is `batch = g / m,
+// i = g % m`: with m == n (every batched test above) a `g / n` typo passes
+// silently; m != n is what exposes it. This is the headline gap.
+#[test]
+fn test_matmul_batched_all_distinct() {
+    assert_matmul_matches_oracle(&seq(vec![4, 2, 3], 0), &seq(vec![4, 3, 5], 1));
+    assert_matmul_matches_oracle(&seq(vec![3, 6, 2], 0), &seq(vec![3, 2, 4], 5));
+}
+
+// More than one batch dim: n_batches is a product of several axes, so this
+// exercises broadcast_strides / out_batch_shape over multi-axis batches while
+// staying on the packed fast path. m, k, n distinct.
+#[test]
+fn test_matmul_multi_batch_dims() {
+    assert_matmul_matches_oracle(&seq(vec![2, 3, 2, 4], 0), &seq(vec![2, 3, 4, 5], 1));
+}
+
+// Both operands broadcast, on *different* batch axes (a: [3,1,..], b: [1,4,..]
+// → out batch [3,4]). Both a_view and b_view get stride-0 dims, so both fall
+// to batched_matmul's contiguous() materialization. m, k, n distinct.
+#[test]
+fn test_matmul_dual_side_batch_broadcast() {
+    assert_matmul_matches_oracle(&seq(vec![3, 1, 2, 3], 0), &seq(vec![1, 4, 3, 5], 1));
+}
+
+// Strided batched operand: the permute makes the view non-packed, forcing
+// batched_matmul's own contiguous() path (distinct from matmul_2d's, which the
+// 2-D transposed tests hit). Done on each side. m, k, n distinct.
+#[test]
+fn test_matmul_batched_strided_operand() {
+    let a = seq(vec![4, 3, 2], 0).permute(&[0, 2, 1]); // [4,2,3], not packed
+    assert_matmul_matches_oracle(&a, &seq(vec![4, 3, 5], 1));
+
+    let b = seq(vec![4, 5, 3], 0).permute(&[0, 2, 1]); // [4,3,5], not packed
+    assert_matmul_matches_oracle(&seq(vec![4, 2, 3], 7), &b);
+}
+
+// Hand-computed batched anchor, independent of the oracle: two stacked 2x2
+// matmuls (the second b is 2·I, so its result is the input doubled). Guards
+// batch-stacking order without trusting SimpleOps to stack the same way.
+#[test]
+fn test_matmul_batched_hand_computed() {
+    // batch 0: [[1,2],[3,4]] · [[1,0],[0,1]] = [[1,2],[3,4]]
+    // batch 1: [[5,6],[7,8]] · [[2,0],[0,2]] = [[10,12],[14,16]]
+    let a = TensorData::new(vec![1., 2., 3., 4., 5., 6., 7., 8.], vec![2, 2, 2]);
+    let b = TensorData::new(vec![1., 0., 0., 1., 2., 0., 0., 2.], vec![2, 2, 2]);
+    let c = FastOps::matmul(&a, &b);
+    assert_eq!(c.shape, vec![2, 2, 2]);
+    assert_eq!(&*c.storage, &vec![1., 2., 3., 4., 10., 12., 14., 16.]);
+}
