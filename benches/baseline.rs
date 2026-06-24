@@ -1,10 +1,12 @@
-//! Module 3 baseline — time the naive `SimpleOps` backend BEFORE any optimization.
+//! Module 3 — compare `SimpleOps` (naive) vs `FastOps` (contiguous fast path)
+//! on the same ops, side by side, BEFORE adding Rayon/SIMD.
 //!
 //! Run with `cargo bench` (criterion auto-uses the optimized `bench` profile —
 //! never benchmark a debug build, it's 10–100x slower and meaningless).
-//! Numbers land in `target/criterion/`, with an HTML report at
-//! `target/criterion/report/index.html`. Criterion saves each run, so after you
-//! write `FastOps` and rerun, it prints the % change against this baseline.
+//! Each group registers both backends as `simple/<n>` and `fast/<n>`, so one
+//! run plots them together. Numbers land in `target/criterion/`, HTML report at
+//! `target/criterion/report/index.html`. Criterion also saves each run, so a
+//! later optimization (Rayon, SIMD) prints its % change against this one.
 //!
 //! Run length is governed by the knobs below — bump them for longer runs and
 //! tighter confidence intervals. They're set per group (matmul vs elementwise)
@@ -19,6 +21,7 @@ use std::time::Duration;
 use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
 use rand::Rng;
 
+use minitorch_rs::fast_ops::FastOps;
 use minitorch_rs::tensor_data::TensorData;
 use minitorch_rs::tensor_ops::{SimpleOps, TensorOps};
 
@@ -54,8 +57,11 @@ fn bench_matmul(c: &mut Criterion) {
         let a = random(vec![n, n]);
         let b = random(vec![n, n]);
         group.throughput(Throughput::Elements((n * n * n) as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |bch, _| {
+        group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
             bch.iter(|| SimpleOps::matmul(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
+            bch.iter(|| FastOps::matmul(black_box(&a), black_box(&b)));
         });
     }
     group.finish();
@@ -71,8 +77,11 @@ fn bench_map(c: &mut Criterion) {
     for n in [512usize, 1024, 2048] {
         let a = random(vec![n, n]);
         group.throughput(Throughput::Elements((n * n) as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |bch, _| {
+        group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
             bch.iter(|| SimpleOps::map(black_box(&a), |x| x * 2.0));
+        });
+        group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
+            bch.iter(|| FastOps::map(black_box(&a), |x| x * 2.0));
         });
     }
     group.finish();
@@ -87,8 +96,11 @@ fn bench_zip(c: &mut Criterion) {
         let a = random(vec![n, n]);
         let b = random(vec![n, n]);
         group.throughput(Throughput::Elements((n * n) as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |bch, _| {
+        group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
             bch.iter(|| SimpleOps::zip(black_box(&a), black_box(&b), |x, y| x + y));
+        });
+        group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
+            bch.iter(|| FastOps::zip(black_box(&a), black_box(&b), |x, y| x + y));
         });
     }
     group.finish();
@@ -102,8 +114,11 @@ fn bench_reduce(c: &mut Criterion) {
     for n in [512usize, 1024, 2048] {
         let a = random(vec![n, n]);
         group.throughput(Throughput::Elements((n * n) as u64));
-        group.bench_with_input(BenchmarkId::from_parameter(n), &n, |bch, _| {
+        group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
             bch.iter(|| SimpleOps::reduce(black_box(&a), |x, y| x + y, 0.0, 0, false));
+        });
+        group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
+            bch.iter(|| FastOps::reduce(black_box(&a), |x, y| x + y, 0.0, 0, false));
         });
     }
     group.finish();
