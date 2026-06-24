@@ -274,3 +274,116 @@ proptest! {
         prop_assert_eq!(&*fast_sw.storage, &*simple_sw.storage);
     }
 }
+
+// ===================================================================
+// reduce — cross-backend equivalence
+// ===================================================================
+
+// Order-sensitive fold (acc*2 + x): the result depends on the order the fiber
+// is visited, so a reversed inner walk would diverge from SimpleOps and fail.
+// A plain sum would mask that.
+fn assert_reduce_matches_oracle(t: &TensorData, dim: usize, keep_dims: bool) {
+    let f = |acc: f64, x: f64| acc * 2.0 + x;
+    let fast = FastOps::reduce(t, f, 0.0, dim, keep_dims);
+    let simple = SimpleOps::reduce(t, f, 0.0, dim, keep_dims);
+    assert_eq!(
+        fast.shape, simple.shape,
+        "shape mismatch: shape={:?} dim={} keep={}",
+        t.shape, dim, keep_dims
+    );
+    assert_eq!(
+        &*fast.storage, &*simple.storage,
+        "storage mismatch: shape={:?} strides={:?} off={} dim={} keep={}",
+        t.shape, t.strides, t.storage_offset, dim, keep_dims
+    );
+}
+
+// Hand-computed anchor (independent of the oracle): sums along each axis.
+#[test]
+fn test_reduce_sum_hand_computed() {
+    let t = TensorData::new(vec![1., 2., 3., 4., 5., 6.], vec![2, 3]);
+    // dim 0 (down columns): [1+4, 2+5, 3+6]
+    let d0 = FastOps::reduce(&t, |a, x| a + x, 0.0, 0, false);
+    assert_eq!(d0.shape, vec![3]);
+    assert_eq!(&*d0.storage, &vec![5., 7., 9.]);
+    // dim 1 (across rows): [1+2+3, 4+5+6]
+    let d1 = FastOps::reduce(&t, |a, x| a + x, 0.0, 1, false);
+    assert_eq!(d1.shape, vec![2]);
+    assert_eq!(&*d1.storage, &vec![6., 15.]);
+    // keep_dims keeps the reduced axis as length 1
+    let d1k = FastOps::reduce(&t, |a, x| a + x, 0.0, 1, true);
+    assert_eq!(d1k.shape, vec![2, 1]);
+    assert_eq!(&*d1k.storage, &vec![6., 15.]);
+}
+
+#[test]
+fn test_reduce_2d_all_dims_keepdims() {
+    let t = TensorData::new((0..6).map(|i| i as f64).collect(), vec![2, 3]);
+    for dim in 0..2 {
+        for keep in [false, true] {
+            assert_reduce_matches_oracle(&t, dim, keep);
+        }
+    }
+}
+
+#[test]
+fn test_reduce_3d_all_dims_keepdims() {
+    let t = TensorData::new((0..24).map(|i| i as f64).collect(), vec![2, 3, 4]);
+    for dim in 0..3 {
+        for keep in [false, true] {
+            assert_reduce_matches_oracle(&t, dim, keep);
+        }
+    }
+}
+
+// Strided input: a transposed view, reduced along each axis.
+#[test]
+fn test_reduce_transposed_input() {
+    let t = TensorData::new((0..6).map(|i| i as f64).collect(), vec![3, 2])
+        .permute(&[1, 0]); // shape [2,3], strides [1,3]
+    for dim in 0..2 {
+        for keep in [false, true] {
+            assert_reduce_matches_oracle(&t, dim, keep);
+        }
+    }
+}
+
+// Offset view: storage_offset must flow into the fiber base.
+#[test]
+fn test_reduce_offset_view() {
+    let t = TensorData {
+        storage: Rc::new((0..10).map(|i| i as f64).collect()),
+        storage_offset: 2,
+        shape: vec![2, 3],
+        strides: vec![3, 1],
+    };
+    for dim in 0..2 {
+        assert_reduce_matches_oracle(&t, dim, false);
+    }
+}
+
+#[test]
+fn test_reduce_1d_to_scalar() {
+    let t = TensorData::new(vec![1., 2., 3., 4.], vec![4]);
+    assert_reduce_matches_oracle(&t, 0, false);
+    assert_reduce_matches_oracle(&t, 0, true);
+}
+
+proptest! {
+    // Any small shape, every axis, both keep_dims settings.
+    #[test]
+    fn prop_reduce_matches_simpleops(
+        shape in proptest::collection::vec(1usize..=5, 1..=3),
+        keep in any::<bool>(),
+    ) {
+        let n: usize = shape.iter().product();
+        let t = TensorData::new((0..n).map(|i| i as f64).collect(), shape.clone());
+        let f = |acc: f64, x: f64| acc * 2.0 + x;
+        for dim in 0..shape.len() {
+            let fast = FastOps::reduce(&t, f, 0.0, dim, keep);
+            let simple = SimpleOps::reduce(&t, f, 0.0, dim, keep);
+            prop_assert_eq!(&fast.shape, &simple.shape);
+            prop_assert_eq!(&*fast.storage, &*simple.storage);
+        }
+    }
+}

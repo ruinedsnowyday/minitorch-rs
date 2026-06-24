@@ -1,5 +1,5 @@
 use crate::{
-    tensor_data::TensorData,
+    tensor_data::{TensorData, iter_indices_of_shape, offset_at},
     tensor_ops::{TensorOps, broadcast_shape},
 };
 
@@ -61,7 +61,39 @@ impl TensorOps for FastOps {
         dim: usize,
         keep_dims: bool,
     ) -> TensorData {
-        todo!()
+        assert!(
+            dim < input.shape.len(),
+            "Can't reduce along axis {} for tensor with dimensions {:?}",
+            dim,
+            &input.shape
+        );
+        let mut target_shape: Vec<usize> = input
+            .shape
+            .iter()
+            .enumerate()
+            .map(|(idx, &len)| if idx != dim { len } else { 1 })
+            .collect();
+        let target_size = target_shape.iter().product();
+        let offset = input.storage_offset;
+        let mut out_storage = Vec::with_capacity(target_size);
+        let stride = input.strides[dim];
+        let dim_size = input.shape[dim];
+        let mut skipped_shape = input.shape.clone();
+        skipped_shape.remove(dim);
+        let mut skipped_strides = input.strides.clone();
+        skipped_strides.remove(dim);
+        for p_out in 0..target_size {
+            let base = offset_at(p_out, offset, &skipped_shape, &skipped_strides);
+            let mut val = init;
+            for k in 0..dim_size {
+                val = f(val, input.storage[base + k * stride]);
+            }
+            out_storage.push(val);
+        }
+        if !keep_dims {
+            target_shape = skipped_shape;
+        }
+        TensorData::new(out_storage, target_shape)
     }
 
     fn matmul(a: &TensorData, b: &TensorData) -> TensorData {

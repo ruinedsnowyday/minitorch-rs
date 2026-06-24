@@ -141,13 +141,7 @@ impl TensorData {
     /// Calculates the offset of the element in storage given the ordinal. Used as a
     /// slow path in cases when the tensor is stored non-contiguously
     pub fn offset_at(&self, p: usize) -> usize {
-        let mut out: usize = 0;
-        let mut rem = p;
-        for (&stride, &shape) in self.strides.iter().zip(&self.shape).rev() {
-            out += (rem % shape) * stride;
-            rem /= shape;
-        }
-        out + self.storage_offset
+        offset_at(p, self.storage_offset, &self.shape, &self.strides)
     }
 }
 
@@ -157,6 +151,23 @@ pub fn contiguous_strides(shape: &[usize]) -> Vec<usize> {
         out[i - 1] = out[i] * dim;
     }
     out
+}
+
+/// Given the shape, strides, and storage offset, computes the offset of the given
+/// ordinal in arbitrary storage
+pub fn offset_at(
+    p: usize,
+    offset: usize,
+    shape: &[usize],
+    strides: &[usize],
+) -> usize {
+    let mut out: usize = 0;
+    let mut rem = p;
+    for (&stride, &shape) in strides.iter().zip(shape).rev() {
+        out += (rem % shape) * stride;
+        rem /= shape;
+    }
+    out + offset
 }
 
 /// Iterates logical indices in row-major (lexicographic) order — the
