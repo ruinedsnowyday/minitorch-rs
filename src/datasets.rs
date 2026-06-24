@@ -7,12 +7,21 @@ pub struct Graph {
 }
 
 pub fn make_pts(n: usize) -> Vec<(f64, f64)> {
-    let mut rng = rand::rng();
+    make_pts_with(n, &mut rand::rng())
+}
+
+/// Seeded variant: pass a fixed-seed RNG (e.g. `StdRng::seed_from_u64(..)`) for
+/// reproducible data in tests. `make_pts` delegates here with the global RNG.
+pub fn make_pts_with(n: usize, rng: &mut impl Rng) -> Vec<(f64, f64)> {
     (0..n).map(|_| (rng.random(), rng.random())).collect()
 }
 
 pub fn simple(n: usize) -> Graph {
-    let x = make_pts(n);
+    simple_with(n, &mut rand::rng())
+}
+
+pub fn simple_with(n: usize, rng: &mut impl Rng) -> Graph {
+    let x = make_pts_with(n, rng);
     let y: Vec<i32> = x
         .iter()
         .map(|&(x1, _)| if x1 < 0.5 { 1 } else { 0 })

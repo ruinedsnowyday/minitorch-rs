@@ -15,7 +15,11 @@ pub struct Linear {
 
 impl Linear {
     pub fn new(in_size: usize, out_size: usize) -> Self {
-        let mut rng = rand::rng();
+        Self::new_with(in_size, out_size, &mut rand::rng())
+    }
+
+    /// Seeded variant for reproducible init; `new` delegates here with the global RNG.
+    pub fn new_with(in_size: usize, out_size: usize, rng: &mut impl Rng) -> Self {
         // Xavier uniform: range = sqrt(6 / (fan_in + fan_out))
         let bound = (6.0 / (in_size + out_size) as f64).sqrt();
         let weights: Vec<Vec<f64>> = (0..out_size)

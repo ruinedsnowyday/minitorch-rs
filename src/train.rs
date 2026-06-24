@@ -18,8 +18,21 @@ pub fn train(
     lr: f64,
     loss_fn: impl Fn(&mut ScalarGraph, NodeId, f64) -> NodeId,
 ) -> TrainingResult {
+    train_with(network, dataset, epochs, lr, loss_fn, &mut rand::rng())
+}
+
+/// Seeded variant for reproducible training. Seed the network's init the same
+/// way (`Network::new_with`) to make a whole run deterministic. `train`
+/// delegates here with the global RNG.
+pub fn train_with(
+    network: &mut Network,
+    dataset: &Graph,
+    epochs: usize,
+    lr: f64,
+    loss_fn: impl Fn(&mut ScalarGraph, NodeId, f64) -> NodeId,
+    rng: &mut impl rand::Rng,
+) -> TrainingResult {
     network.train();
-    let mut rng = rand::rng();
     let mut result = TrainingResult {
         loss_history: vec![],
         acc_history: vec![],
@@ -28,7 +41,7 @@ pub fn train(
         let mut total_loss = 0.;
         let mut correct: usize = 0;
         let mut indices: Vec<usize> = (0..dataset.n).collect();
-        indices.shuffle(&mut rng);
+        indices.shuffle(rng);
         for i in indices {
             let mut graph = ScalarGraph::new();
             let (x0, x1) = dataset.x[i];

@@ -1,5 +1,8 @@
 const EPS: f64 = 1e-6;
 
+/// leaky ReLU negative slope constant
+const ALPHA: f64 = 1e-2;
+
 pub fn mul(a: f64, b: f64) -> f64 {
     a * b
 }
@@ -44,6 +47,10 @@ pub fn relu(a: f64) -> f64 {
     a.max(0.)
 }
 
+pub fn leaky_relu(a: f64) -> f64 {
+    if a > 0. { a } else { a * ALPHA }
+}
+
 pub fn log(a: f64) -> f64 {
     (a + EPS).ln()
 }
@@ -66,6 +73,10 @@ pub fn inv_back(a: f64, d: f64) -> f64 {
 
 pub fn relu_back(a: f64, d: f64) -> f64 {
     if a > 0. { d } else { 0. }
+}
+
+pub fn leaky_relu_back(a: f64, d: f64) -> f64 {
+    if a > 0. { d } else { ALPHA * d }
 }
 
 pub fn sigmoid_back(post_a: f64, d: f64) -> f64 {

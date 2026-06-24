@@ -22,10 +22,20 @@ fn apply_elementwise(
 
 impl Network {
     pub fn new(input_dim: usize, hidden: usize, output_dim: usize) -> Self {
+        Self::new_with(input_dim, hidden, output_dim, &mut rand::rng())
+    }
+
+    /// Seeded variant for reproducible init; `new` delegates here with the global RNG.
+    pub fn new_with(
+        input_dim: usize,
+        hidden: usize,
+        output_dim: usize,
+        rng: &mut impl rand::Rng,
+    ) -> Self {
         Network {
-            l1: Linear::new(input_dim, hidden),
-            l2: Linear::new(hidden, hidden),
-            l3: Linear::new(hidden, output_dim),
+            l1: Linear::new_with(input_dim, hidden, rng),
+            l2: Linear::new_with(hidden, hidden, rng),
+            l3: Linear::new_with(hidden, output_dim, rng),
             training: false,
         }
     }
@@ -36,9 +46,9 @@ impl Network {
         input_ids: Vec<NodeId>,
     ) -> Vec<NodeId> {
         let l1_out = self.l1.forward(graph, input_ids);
-        let l1_act = apply_elementwise(ScalarOp::ReLU, graph, l1_out);
+        let l1_act = apply_elementwise(ScalarOp::LeakyReLU, graph, l1_out);
         let l2_out = self.l2.forward(graph, l1_act);
-        let l2_act = apply_elementwise(ScalarOp::ReLU, graph, l2_out);
+        let l2_act = apply_elementwise(ScalarOp::LeakyReLU, graph, l2_out);
         let l3_out = self.l3.forward(graph, l2_act);
         apply_elementwise(ScalarOp::Sigmoid, graph, l3_out)
     }
