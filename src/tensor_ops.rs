@@ -6,8 +6,11 @@ pub trait TensorOps {
     fn map(input: &TensorData, f: impl Fn(f64) -> f64 + Send + Sync) -> TensorData;
 
     /// apply binary operation element-wise with broadcasting
-    fn zip(a: &TensorData, b: &TensorData, f: impl Fn(f64, f64) -> f64)
-    -> TensorData;
+    fn zip(
+        a: &TensorData,
+        b: &TensorData,
+        f: impl Fn(f64, f64) -> f64 + Send + Sync,
+    ) -> TensorData;
 
     /// reduce along a single dimension with a binary operation and identity element
     fn reduce(

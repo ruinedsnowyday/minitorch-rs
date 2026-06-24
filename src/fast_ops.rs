@@ -1,6 +1,9 @@
 use std::rc::Rc;
 
-use rayon::iter::{IntoParallelIterator, IntoParallelRefIterator, ParallelIterator};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
+    ParallelIterator,
+};
 
 use crate::{
     tensor_data::{TensorData, offset_at},
@@ -36,7 +39,7 @@ impl TensorOps for FastOps {
     fn zip(
         a: &TensorData,
         b: &TensorData,
-        f: impl Fn(f64, f64) -> f64,
+        f: impl Fn(f64, f64) -> f64 + Send + Sync,
     ) -> TensorData {
         let out_shape = broadcast_shape(&a.shape, &b.shape);
         let a_view = a.broadcast_to(&out_shape);
@@ -45,17 +48,26 @@ impl TensorOps for FastOps {
         let b_view = b.broadcast_to(&out_shape);
         let b_offset = b_view.storage_offset;
         let storage = if a_view.is_packed() && b_view.is_packed() {
-            a_view.storage[a_offset..a_offset + size]
-                .iter()
-                .zip(&b_view.storage[b_offset..b_offset + size])
+            let a_data: &[f64] = &a_view.storage[a_offset..a_offset + size];
+            let b_data: &[f64] = &b_view.storage[b_offset..b_offset + size];
+            a_data
+                .par_iter()
+                .zip(b_data)
                 .map(|(&a_val, &b_val)| f(a_val, b_val))
                 .collect()
         } else {
+            let a_data: &[f64] = &a_view.storage[..];
+            let b_data: &[f64] = &b_view.storage[..];
+            let a_shape: &[usize] = &a_view.shape[..];
+            let b_shape: &[usize] = &b_view.shape[..];
+            let a_strides: &[usize] = &a_view.strides[..];
+            let b_strides: &[usize] = &b_view.strides[..];
             (0..size)
+                .into_par_iter()
                 .map(|p| {
                     f(
-                        a_view.storage[a_view.offset_at(p)],
-                        b_view.storage[b_view.offset_at(p)],
+                        a_data[offset_at(p, a_offset, a_shape, a_strides)],
+                        b_data[offset_at(p, b_offset, b_shape, b_strides)],
                     )
                 })
                 .collect()
