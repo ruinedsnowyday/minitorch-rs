@@ -201,12 +201,16 @@ only the overhead-bound parts got the big win:
 
 **matmul** (parallel `par_chunks_mut` over output rows):
 
-| n    | serial fast      | parallel         | Δ vs serial     |
-|------|------------------|------------------|-----------------|
-| 128  | 549 µs (3.81 G)  | 131 µs (16.0 G)  | **4.2× faster** |
-| 256  | 3.16 ms (5.30 G) | 404 µs (41.6 G)  | **7.9× faster** |
-| 512  | 38.0 ms (3.54 G) | 5.73 ms (23.4 G) | **6.6× faster** |
-| 1024 | 330 ms (3.25 G)  | 14.6 ms (73.4 G) | **22.6× faster** |
+| n    | serial fast      | parallel        | Δ vs serial     |
+|------|------------------|-----------------|-----------------|
+| 128  | 549 µs (3.81 G)  | 125 µs (16.8 G) | **4.4× faster** |
+| 256  | 3.16 ms (5.30 G) | 325 µs (51.5 G) | **9.7× faster** |
+| 512  | 38.0 ms (3.54 G) | 1.35 ms (99 G)  | **28× faster**  |
+| 1024 | 330 ms (3.25 G)  | 7.18 ms (149 G) | **46× faster**  |
+
+> Validated by two clean re-runs (within ~3%) on a quiet box; absolute values are
+> representative. The single-run figures previously here had a noisy 512 dip — see
+> the reading below.
 
 ### Reading the Rayon results
 
@@ -238,22 +242,26 @@ only the overhead-bound parts got the big win:
 - **Both regress on small inputs** → the fix is a serial/parallel threshold
   (op-cost-dependent; the trivial `x*2` / `+` here is the *worst* case to
   amortize, so real ops like `sigmoid` cross over much sooner). Deferred.
-- **matmul shatters the bandwidth ceiling — 16–73 Gelem/s.** Prediction held: it's
+- **matmul shatters the bandwidth ceiling — 17–149 Gelem/s.** Prediction held: it's
   compute-bound (each loaded element drives O(n) multiply-adds), so the cores have
   real arithmetic to chew, not just memory to move. Parallel throughput is
-  **17–80× the map/zip ~920 Melem/s wall**. Speedup over serial-fast climbs with
-  size: 4.2× (128) → 7.9× (256) → 6.6× (512) → 22.6× (1024) — and even 128³ *avoids*
-  map's small-input regression, because the compute density amortizes rayon's
-  overhead where a single multiply couldn't.
-- The matmul profile is **non-monotonic** (256 and 1024 peak; 512 dips to 23.4 G) —
-  a tug-of-war between rayon-overhead amortization (favors large n) and **B-cache
-  reuse** (every core reads *all* of B for its rows; whether B fits cache shifts the
-  ceiling). The exact 512 dip is a cache question a profiler would pin; the headline
-  is the 1–2 orders-of-magnitude gap over the bandwidth-bound ops.
-- **Cumulative naive → fast path → Rayon:** matmul/1024 went 358 Melem/s → 73.4
-  Gelem/s — **~205×** (≈9× from contiguous iteration, ≈22× from Rayon). Yet that's
-  still only ~4–5% of the Xeon's f64 peak (naive `ikj`, no tiling/register-blocking),
-  so SIMD, cache-blocking, and CUDA all still have large headroom.
+  **18–160× the map/zip ~920 Melem/s wall**. Speedup over serial-fast climbs
+  monotonically with size: 4.4× (128) → 9.7× (256) → 28× (512) → 46× (1024) — and
+  even 128³ *avoids* map's small-input regression, because the compute density
+  amortizes rayon's overhead where a single multiply couldn't.
+- The profile is **clean and monotonic**: throughput rises with n (16.8 → 51.5 → 99
+  → 149 G) as rayon's fixed overhead amortizes and the row/core load balance improves
+  (1024 rows over 56 cores beats 128 rows over 56). The **46× at 1024 is ~82% of the
+  56-core ideal** — near-linear scaling on the compute-bound op, as predicted. (An
+  earlier single run showed a 512 "dip" to ~23 G; two clean re-runs confirmed that
+  was a measurement artifact, *not* a cache effect — so the earlier "B-cache
+  tug-of-war" read was wrong. The parallel path measures noisier than serial,
+  ~±3% run-to-run vs ~±0.1%, so treat sub-5% wobble on these rows as noise.)
+- **Cumulative naive → fast path → Rayon:** matmul/1024 went 358 Melem/s → 149
+  Gelem/s — **~418×** (≈9× from contiguous iteration, ≈46× from Rayon). Yet that's
+  still only **~6% of the Xeon's f64 peak** (≈5 TFLOP/s; naive `ikj`, no
+  tiling/register-blocking), so SIMD, cache-blocking, and CUDA all still have large
+  headroom.
 
 ## After Rayon + SIMD
 
