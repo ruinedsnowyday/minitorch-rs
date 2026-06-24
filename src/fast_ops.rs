@@ -47,17 +47,19 @@ impl TensorOps for FastOps {
         let a_offset = a_view.storage_offset;
         let b_view = b.broadcast_to(&out_shape);
         let b_offset = b_view.storage_offset;
+        let a_data: &[f64];
+        let b_data: &[f64];
         let storage = if a_view.is_packed() && b_view.is_packed() {
-            let a_data: &[f64] = &a_view.storage[a_offset..a_offset + size];
-            let b_data: &[f64] = &b_view.storage[b_offset..b_offset + size];
+            a_data = &a_view.storage[a_offset..a_offset + size];
+            b_data = &b_view.storage[b_offset..b_offset + size];
             a_data
                 .par_iter()
                 .zip(b_data)
                 .map(|(&a_val, &b_val)| f(a_val, b_val))
                 .collect()
         } else {
-            let a_data: &[f64] = &a_view.storage[..];
-            let b_data: &[f64] = &b_view.storage[..];
+            a_data = &a_view.storage[..];
+            b_data = &b_view.storage[..];
             let a_shape: &[usize] = &a_view.shape[..];
             let b_shape: &[usize] = &b_view.shape[..];
             let a_strides: &[usize] = &a_view.strides[..];
@@ -77,7 +79,7 @@ impl TensorOps for FastOps {
 
     fn reduce(
         input: &TensorData,
-        f: impl Fn(f64, f64) -> f64,
+        f: impl Fn(f64, f64) -> f64 + Send + Sync,
         init: f64,
         dim: usize,
         keep_dims: bool,
@@ -96,21 +98,24 @@ impl TensorOps for FastOps {
             .collect();
         let target_size = target_shape.iter().product();
         let offset = input.storage_offset;
-        let mut out_storage = Vec::with_capacity(target_size);
         let stride = input.strides[dim];
         let dim_size = input.shape[dim];
         let mut skipped_shape = input.shape.clone();
         skipped_shape.remove(dim);
         let mut skipped_strides = input.strides.clone();
         skipped_strides.remove(dim);
-        for p_out in 0..target_size {
-            let base = offset_at(p_out, offset, &skipped_shape, &skipped_strides);
-            let mut val = init;
-            for k in 0..dim_size {
-                val = f(val, input.storage[base + k * stride]);
-            }
-            out_storage.push(val);
-        }
+        let data: &[f64] = &input.storage[..];
+        let out_storage = (0..target_size)
+            .into_par_iter()
+            .map(|p_out| {
+                let base = offset_at(p_out, offset, &skipped_shape, &skipped_strides);
+                let mut val = init;
+                for k in 0..dim_size {
+                    val = f(val, data[base + k * stride]);
+                }
+                val
+            })
+            .collect();
         if !keep_dims {
             target_shape = skipped_shape;
         }

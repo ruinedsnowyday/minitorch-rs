@@ -15,7 +15,7 @@ pub trait TensorOps {
     /// reduce along a single dimension with a binary operation and identity element
     fn reduce(
         input: &TensorData,
-        f: impl Fn(f64, f64) -> f64,
+        f: impl Fn(f64, f64) -> f64 + Send + Sync,
         init: f64,
         dim: usize,
         keep_dims: bool,
