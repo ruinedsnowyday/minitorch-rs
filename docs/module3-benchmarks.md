@@ -162,7 +162,7 @@ only the overhead-bound parts got the big win:
   SIMD-hard (dependency within a fiber) but Rayon-easy (fibers are independent
   across output cells), so Rayon may give it the win SIMD can't.
 
-## After Rayon (CPU parallel) — map, zip, reduce measured
+## After Rayon (CPU parallel) — all four ops measured
 
 - Machine: same Xeon w9-3495X (56C/112T). Rayon over the **independent axis**
   (output ordinal for map/zip, output cells for reduce); each task's
@@ -172,7 +172,8 @@ only the overhead-bound parts got the big win:
   delta alone, from criterion's saved-run `change`. Date: 2026-06-24.
 - **No serial/parallel threshold yet**, so small inputs pay rayon's entry cost
   and can *regress*.
-- **matmul** still serial (parallelize next).
+- **matmul** parallelizes over output rows (`par_chunks_mut`), not a closure axis
+  — so its signature gains no `Send + Sync` bound.
 
 **map** (parallel `par_iter`, `f = |x| x*2`):
 
@@ -197,6 +198,15 @@ only the overhead-bound parts got the big win:
 | 512  | 714 µs (367 M)   | 142 µs (1.83 G)   | **5.0× faster** |
 | 1024 | 2.89 ms (363 M)  | 190 µs (5.52 G)   | **15× faster** |
 | 2048 | 11.6 ms (361 M)  | 257 µs (16.3 G)   | **45× faster** |
+
+**matmul** (parallel `par_chunks_mut` over output rows):
+
+| n    | serial fast      | parallel         | Δ vs serial     |
+|------|------------------|------------------|-----------------|
+| 128  | 549 µs (3.81 G)  | 131 µs (16.0 G)  | **4.2× faster** |
+| 256  | 3.16 ms (5.30 G) | 404 µs (41.6 G)  | **7.9× faster** |
+| 512  | 38.0 ms (3.54 G) | 5.73 ms (23.4 G) | **6.6× faster** |
+| 1024 | 330 ms (3.25 G)  | 14.6 ms (73.4 G) | **22.6× faster** |
 
 ### Reading the Rayon results
 
@@ -228,9 +238,22 @@ only the overhead-bound parts got the big win:
 - **Both regress on small inputs** → the fix is a serial/parallel threshold
   (op-cost-dependent; the trivial `x*2` / `+` here is the *worst* case to
   amortize, so real ops like `sigmoid` cross over much sooner). Deferred.
-- Setup for matmul: it's **compute-bound** (O(n) data reuse, no full-size output
-  churned per element), so predict near-linear scaling like reduce — not map's
-  bandwidth-capped 2.36×.
+- **matmul shatters the bandwidth ceiling — 16–73 Gelem/s.** Prediction held: it's
+  compute-bound (each loaded element drives O(n) multiply-adds), so the cores have
+  real arithmetic to chew, not just memory to move. Parallel throughput is
+  **17–80× the map/zip ~920 Melem/s wall**. Speedup over serial-fast climbs with
+  size: 4.2× (128) → 7.9× (256) → 6.6× (512) → 22.6× (1024) — and even 128³ *avoids*
+  map's small-input regression, because the compute density amortizes rayon's
+  overhead where a single multiply couldn't.
+- The matmul profile is **non-monotonic** (256 and 1024 peak; 512 dips to 23.4 G) —
+  a tug-of-war between rayon-overhead amortization (favors large n) and **B-cache
+  reuse** (every core reads *all* of B for its rows; whether B fits cache shifts the
+  ceiling). The exact 512 dip is a cache question a profiler would pin; the headline
+  is the 1–2 orders-of-magnitude gap over the bandwidth-bound ops.
+- **Cumulative naive → fast path → Rayon:** matmul/1024 went 358 Melem/s → 73.4
+  Gelem/s — **~205×** (≈9× from contiguous iteration, ≈22× from Rayon). Yet that's
+  still only ~4–5% of the Xeon's f64 peak (naive `ikj`, no tiling/register-blocking),
+  so SIMD, cache-blocking, and CUDA all still have large headroom.
 
 ## After Rayon + SIMD
 
