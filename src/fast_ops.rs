@@ -1,8 +1,11 @@
 use std::rc::Rc;
 
-use rayon::iter::{
-    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
-    ParallelIterator,
+use rayon::{
+    iter::{
+        IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
+        ParallelIterator,
+    },
+    slice::ParallelSliceMut,
 };
 
 use crate::{
@@ -217,13 +220,16 @@ fn matmul_2d(a: &TensorData, b: &TensorData) -> TensorData {
         &b_holder.storage[..]
     };
     let mut out_storage: Vec<f64> = vec![0.; m * n];
-    for i in 0..m {
-        for p in 0..k {
-            let a_ip = a_storage[i * k + p];
-            for j in 0..n {
-                out_storage[i * n + j] += a_ip * b_storage[p * n + j];
+    out_storage
+        .par_chunks_mut(n)
+        .enumerate()
+        .for_each(|(i, out_row)| {
+            for p in 0..k {
+                let a_ip = a_storage[i * k + p];
+                for j in 0..n {
+                    out_row[j] += a_ip * b_storage[p * n + j];
+                }
             }
-        }
-    }
+        });
     TensorData::new(out_storage, vec![m, n])
 }
