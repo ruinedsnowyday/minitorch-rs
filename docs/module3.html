@@ -15,7 +15,29 @@
       --prussian: #1F3A5F;
       --code-bg: #EAE7DE;
       --muted: #7A7674;
+      color-scheme: light;
     }
+
+    /* Dark theme: the "night version" of the warm-paper palette above —
+       a warm near-black ground with off-white ink, not a cold gray. Only
+       these 5 variables flip; every rule already reads them via var(). */
+    html[data-theme="dark"] {
+      --paper: #1B1916;     /* warm near-black */
+      --body: #E7E3D8;      /* warm off-white ink */
+      --prussian: #8FB4DD;  /* prussian lifted for contrast on dark */
+      --code-bg: #262320;   /* slightly elevated warm charcoal */
+      --muted: #9A938A;     /* warm gray, legible on dark */
+      color-scheme: dark;
+    }
+
+    /* The inline SVG figures hardcode the light hexes as presentation
+       attributes. CSS fill/stroke properties outrank presentation
+       attributes, so binding them to the theme variables here recolors
+       every figure automatically — no SVG markup changes needed. */
+    svg [fill="#7A7674"]   { fill: var(--muted); }
+    svg [fill="#1B1B1B"]   { fill: var(--body); }
+    svg [fill="#1F3A5F"]   { fill: var(--prussian); }
+    svg [stroke="#1F3A5F"] { stroke: var(--prussian); }
 
     * { box-sizing: border-box; }
 
@@ -287,10 +309,56 @@
       border-top: 1px solid var(--muted);
       margin: 48px 0;
     }
+
+    /* Theme toggle — quiet utility control, pinned to the top-right so it
+       stays reachable down a long document. */
+    #theme-toggle {
+      position: fixed;
+      top: 16px;
+      right: 16px;
+      z-index: 50;
+      padding: 6px 10px;
+      font-family: "JetBrains Mono", ui-monospace, Menlo, monospace;
+      font-size: 12px;
+      line-height: 1;
+      color: var(--muted);
+      background: var(--code-bg);
+      border: 1px solid var(--muted);
+      border-radius: 6px;
+      cursor: pointer;
+      opacity: 0.85;
+    }
+    #theme-toggle:hover { opacity: 1; }
+    #theme-toggle:focus-visible {
+      outline: 2px solid var(--prussian);
+      outline-offset: 2px;
+    }
+    @media (prefers-reduced-motion: no-preference) {
+      html, body, #theme-toggle {
+        transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+      }
+    }
+    @media (max-width: 640px) {
+      #theme-toggle { top: 10px; right: 10px; padding: 5px 8px; }
+    }
   </style>
+  <script>
+    /* Apply the saved or OS-preferred theme before first paint (no flash). */
+    (function () {
+      try {
+        var saved = localStorage.getItem("theme");
+        var dark = saved
+          ? saved === "dark"
+          : window.matchMedia("(prefers-color-scheme: dark)").matches;
+        if (dark) document.documentElement.dataset.theme = "dark";
+      } catch (e) {}
+    })();
+  </script>
 </head>
 <body>
 <div class="wrap">
+
+<button id="theme-toggle" type="button" aria-label="Toggle dark mode" title="Toggle dark mode" aria-pressed="false">☾ Dark</button>
 
 <header>
   <p class="eyebrow">minitorch-rs · module 3</p>
@@ -1814,5 +1882,33 @@ RUSTFLAGS="-C target-cpu=native" cargo build --release           # whatever this
 </footer>
 
 </div>
+
+<script>
+  (function () {
+    var root = document.documentElement;
+    var btn = document.getElementById("theme-toggle");
+    function render() {
+      var dark = root.dataset.theme === "dark";
+      btn.textContent = dark ? "☀ Light" : "☾ Dark";
+      btn.setAttribute("aria-pressed", String(dark));
+    }
+    btn.addEventListener("click", function () {
+      var goingDark = root.dataset.theme !== "dark";
+      if (goingDark) root.dataset.theme = "dark";
+      else delete root.dataset.theme;
+      try { localStorage.setItem("theme", goingDark ? "dark" : "light"); } catch (e) {}
+      render();
+    });
+    /* Follow the OS setting until the reader picks a theme explicitly. */
+    window.matchMedia("(prefers-color-scheme: dark)")
+      .addEventListener("change", function (e) {
+        try { if (localStorage.getItem("theme")) return; } catch (err) {}
+        if (e.matches) root.dataset.theme = "dark";
+        else delete root.dataset.theme;
+        render();
+      });
+    render();
+  })();
+</script>
 </body>
 </html>
