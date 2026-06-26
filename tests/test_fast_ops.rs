@@ -14,9 +14,8 @@ use minitorch_rs::fast_ops::FastOps;
 use minitorch_rs::operators;
 use minitorch_rs::simd_ops::{
     BinaryOp, LANES, SimdAdd, SimdEq, SimdExp, SimdId, SimdInv, SimdInvBack,
-    SimdLeakyReLU, SimdLeakyReLUBack, SimdLog, SimdLogBack, SimdLt, SimdMax,
-    SimdMul, SimdNeg, SimdReLU, SimdReLUBack, SimdSigmoid, SimdSigmoidBack,
-    UnaryOp,
+    SimdLeakyReLU, SimdLeakyReLUBack, SimdLog, SimdLogBack, SimdLt, SimdMax, SimdMul,
+    SimdNeg, SimdReLU, SimdReLUBack, SimdSigmoid, SimdSigmoidBack, UnaryOp,
 };
 use minitorch_rs::tensor_data::TensorData;
 use minitorch_rs::tensor_ops::{SimpleOps, TensorOps};
@@ -608,7 +607,10 @@ fn test_matmul_batched_all_distinct() {
 // staying on the packed fast path. m, k, n distinct.
 #[test]
 fn test_matmul_multi_batch_dims() {
-    assert_matmul_matches_oracle(&seq(vec![2, 3, 2, 4], 0), &seq(vec![2, 3, 4, 5], 1));
+    assert_matmul_matches_oracle(
+        &seq(vec![2, 3, 2, 4], 0),
+        &seq(vec![2, 3, 4, 5], 1),
+    );
 }
 
 // Both operands broadcast, on *different* batch axes (a: [3,1,..], b: [1,4,..]
@@ -616,7 +618,10 @@ fn test_matmul_multi_batch_dims() {
 // to batched_matmul's contiguous() materialization. m, k, n distinct.
 #[test]
 fn test_matmul_dual_side_batch_broadcast() {
-    assert_matmul_matches_oracle(&seq(vec![3, 1, 2, 3], 0), &seq(vec![1, 4, 3, 5], 1));
+    assert_matmul_matches_oracle(
+        &seq(vec![3, 1, 2, 3], 0),
+        &seq(vec![1, 4, 3, 5], 1),
+    );
 }
 
 // Strided batched operand: the permute makes the view non-packed, forcing
@@ -844,7 +849,8 @@ fn test_zip_op_real_add() {
 fn test_zip_op_contiguous_various_lengths() {
     for n in 1..=20 {
         let a = TensorData::new(signed_seq(n), vec![n]);
-        let b = TensorData::new((0..n).map(|i| i as f64 * 0.5 - 3.0).collect(), vec![n]);
+        let b =
+            TensorData::new((0..n).map(|i| i as f64 * 0.5 - 3.0).collect(), vec![n]);
         assert_zip_op_matches_oracle::<4>(&a, &b);
         assert_zip_op_matches_oracle::<8>(&a, &b);
     }
@@ -925,7 +931,8 @@ fn check_map_exact<Op: UnaryOp, const N: usize>(input: &TensorData) {
     let oracle = SimpleOps::map(input, Op::scalar);
     assert_eq!(fast.shape, oracle.shape);
     assert_eq!(
-        &*fast.storage, &*oracle.storage,
+        &*fast.storage,
+        &*oracle.storage,
         "exact map mismatch, len={}",
         input.size()
     );
@@ -949,7 +956,8 @@ fn check_zip_exact<Op: BinaryOp, const N: usize>(a: &TensorData, b: &TensorData)
     let oracle = SimpleOps::zip(a, b, Op::scalar);
     assert_eq!(fast.shape, oracle.shape);
     assert_eq!(
-        &*fast.storage, &*oracle.storage,
+        &*fast.storage,
+        &*oracle.storage,
         "exact zip mismatch, len={}",
         a.size()
     );

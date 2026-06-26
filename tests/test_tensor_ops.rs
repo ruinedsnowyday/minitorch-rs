@@ -66,14 +66,18 @@ fn test_zip_same_shapes() {
 fn test_zip_broadcast_1d_against_2d() {
     let a = TensorData::new(vec![10.0, 20.0, 30.0], vec![3]);
     let b = TensorData::new(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ],
         vec![4, 3],
     );
     let c = SimpleOps::zip(&a, &b, |x, y| x + y);
     assert_eq!(c.shape, vec![4, 3]);
     assert_eq!(
         &*c.storage,
-        &vec![11.0, 22.0, 33.0, 14.0, 25.0, 36.0, 17.0, 28.0, 39.0, 20.0, 31.0, 42.0]
+        &vec![
+            11.0, 22.0, 33.0, 14.0, 25.0, 36.0, 17.0, 28.0, 39.0, 20.0, 31.0, 42.0
+        ]
     );
 }
 
@@ -89,10 +93,7 @@ fn test_zip_broadcast_both_have_size_1_dim() {
     assert_eq!(c.shape, vec![4, 3]);
     // c[i, j] = a[i, 0] * b[0, j]
     let expected = vec![
-        10.0, 20.0, 30.0,
-        20.0, 40.0, 60.0,
-        30.0, 60.0, 90.0,
-        40.0, 80.0, 120.0,
+        10.0, 20.0, 30.0, 20.0, 40.0, 60.0, 30.0, 60.0, 90.0, 40.0, 80.0, 120.0,
     ];
     assert_eq!(&*c.storage, &expected);
 }
@@ -160,8 +161,9 @@ fn test_reduce_3d_middle_dim() {
     //   batch 0:  (1, 2), (3, 4), (5, 6)   → col sums (9, 12)
     //   batch 1:  (7, 8), (9,10), (11,12) → col sums (27, 30)
     let t = TensorData::new(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
-             7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ],
         vec![2, 3, 2],
     );
     let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 1, false);
@@ -205,8 +207,9 @@ fn test_reduce_keepdims_sum_dim_1() {
 #[test]
 fn test_reduce_keepdims_3d_middle_dim() {
     let t = TensorData::new(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0,
-             7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ],
         vec![2, 3, 2],
     );
     let out = SimpleOps::reduce(&t, |a, b| a + b, 0.0, 1, true);
@@ -329,7 +332,9 @@ fn test_broadcast_strides_panics_on_mismatch() {
 fn test_matmul_2d_basic_2x3_times_3x4() {
     let a = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     let b = TensorData::new(
-        vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0],
+        vec![
+            7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0,
+        ],
         vec![3, 4],
     );
     let c = matmul_2d(&a, &b);
@@ -405,7 +410,9 @@ fn test_matmul_2d_panics_on_non_2d_input() {
 fn test_simpleops_matmul_2d_dispatch() {
     let a = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     let b = TensorData::new(
-        vec![7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0],
+        vec![
+            7.0, 8.0, 9.0, 10.0, 11.0, 12.0, 13.0, 14.0, 15.0, 16.0, 17.0, 18.0,
+        ],
         vec![3, 4],
     );
     let c = SimpleOps::matmul(&a, &b);
@@ -457,13 +464,12 @@ fn test_simpleops_matmul_batched_same_batch_shape() {
 #[test]
 fn test_simpleops_matmul_broadcast_batch() {
     let a = TensorData::new(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0],
+        vec![
+            1.0, 2.0, 3.0, 4.0, 5.0, 6.0, 7.0, 8.0, 9.0, 10.0, 11.0, 12.0,
+        ],
         vec![2, 2, 3],
     );
-    let b = TensorData::new(
-        vec![1.0, 0.0, 0.0, 1.0, 1.0, 1.0],
-        vec![3, 2],
-    );
+    let b = TensorData::new(vec![1.0, 0.0, 0.0, 1.0, 1.0, 1.0], vec![3, 2]);
     let c = SimpleOps::matmul(&a, &b);
     assert_eq!(c.shape, vec![2, 2, 2]);
     assert_eq!(
@@ -513,11 +519,14 @@ fn test_simpleops_map_on_offset_input_produces_tight_storage() {
     let out = SimpleOps::map(&raw, |x| x + 10.0);
 
     // Logical values must reflect the input view (not the backing buffer).
-    let collected: Vec<f64> =
-        out.iter_indices().map(|i| out.get(&i)).collect();
+    let collected: Vec<f64> = out.iter_indices().map(|i| out.get(&i)).collect();
     assert_eq!(collected, vec![11., 12., 13., 14.]);
     // Structural: storage tight, offset reset, strides contiguous.
-    assert_eq!(out.storage.len(), 4, "storage must be tight to logical size");
+    assert_eq!(
+        out.storage.len(),
+        4,
+        "storage must be tight to logical size"
+    );
     assert_eq!(out.storage_offset, 0);
     assert_eq!(out.strides, vec![2, 1]);
 }
@@ -532,8 +541,7 @@ fn test_simpleops_map_on_broadcast_view_materializes_distinct_cells() {
     let out = SimpleOps::map(&broadcast, |x| x * 2.0);
 
     assert_eq!(out.shape, vec![3]);
-    let collected: Vec<f64> =
-        out.iter_indices().map(|i| out.get(&i)).collect();
+    let collected: Vec<f64> = out.iter_indices().map(|i| out.get(&i)).collect();
     assert_eq!(collected, vec![10., 10., 10.]);
     // The critical assertion — three distinct storage cells, not one alias.
     assert_eq!(

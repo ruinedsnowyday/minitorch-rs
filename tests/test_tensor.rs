@@ -442,7 +442,6 @@ fn test_contiguous_does_not_shortcircuit_on_oversized_storage() {
         "contiguous() must enforce storage.len() == size(), not just strides+offset"
     );
     // Values must reflect the logical view.
-    let collected: Vec<f64> =
-        out.iter_indices().map(|i| out.get(&i)).collect();
+    let collected: Vec<f64> = out.iter_indices().map(|i| out.get(&i)).collect();
     assert_eq!(collected, vec![1.0, 2.0, 3.0, 4.0]);
 }

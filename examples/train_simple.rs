@@ -17,7 +17,9 @@ fn main() {
     let dataset = simple(n);
     let mut net = Network::new(2, hidden, 1);
 
-    println!("training on `simple`: n={n}, hidden={hidden}, lr={lr}, epochs={epochs}");
+    println!(
+        "training on `simple`: n={n}, hidden={hidden}, lr={lr}, epochs={epochs}"
+    );
     let result = train(&mut net, &dataset, epochs, lr, bce);
 
     let report_every = (epochs / 10).max(1);

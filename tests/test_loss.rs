@@ -1,4 +1,4 @@
-use minitorch_rs::autodiff::{central_difference, ScalarGraph, ScalarOp};
+use minitorch_rs::autodiff::{ScalarGraph, ScalarOp, central_difference};
 use minitorch_rs::loss::{bce, mse};
 
 const EPS: f64 = 1e-9;
@@ -110,7 +110,11 @@ fn test_bce_forward_value() {
     let mut graph = ScalarGraph::new();
     let pred_id = graph.add_leaf(0.5);
     let loss_id = bce(&mut graph, pred_id, 1.0);
-    assert!(close_with(graph.get_node(loss_id).out, (2.0_f64).ln(), LOG_TOL));
+    assert!(close_with(
+        graph.get_node(loss_id).out,
+        (2.0_f64).ln(),
+        LOG_TOL
+    ));
 }
 
 // BCE is symmetric under (p, t) ↔ (1-p, 1-t):
@@ -182,7 +186,11 @@ fn test_bce_gradient_chains_through_predecessors() {
 
     // forward sanity: pred = 0.4, loss = -log(0.4)
     assert!(close(graph.get_node(pred).out, 0.4));
-    assert!(close_with(graph.get_node(loss_id).out, -(0.4_f64).ln(), LOG_TOL));
+    assert!(close_with(
+        graph.get_node(loss_id).out,
+        -(0.4_f64).ln(),
+        LOG_TOL
+    ));
 
     // gradients — textbook values, drifted by the log_back nudge, so
     // checked at LOG_TOL rather than tight EPS.

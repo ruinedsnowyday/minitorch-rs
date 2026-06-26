@@ -35,7 +35,11 @@ fn assert_data_close(actual: &TensorData, expected: &TensorData, tol: f64) {
         assert!(
             diff < tol,
             "values differ at flat index {}: got {}, expected {} (|diff| = {} >= tol {})",
-            i, a, e, diff, tol
+            i,
+            a,
+            e,
+            diff,
+            tol
         );
     }
 }
@@ -122,8 +126,13 @@ fn requires_grad_pair(a_data: TensorData, b_data: TensorData) -> (Tensor, Tensor
 }
 
 /// Grad-check a binary function w.r.t. BOTH inputs simultaneously.
-fn grad_check_binary<F>(a_data: TensorData, b_data: TensorData, f: F, h: f64, tol: f64)
-where
+fn grad_check_binary<F>(
+    a_data: TensorData,
+    b_data: TensorData,
+    f: F,
+    h: f64,
+    tol: f64,
+) where
     F: Fn(&Tensor, &Tensor) -> Tensor,
 {
     let (a, b) = requires_grad_pair(a_data.clone(), b_data.clone());
@@ -538,8 +547,7 @@ fn test_backward_view_from_strided_upstream() {
     // Build a strided upstream by permuting a [3,2] tensor — same 6 values,
     // different layout. After permute, logical order is column-major of the
     // original.
-    let upstream_pre =
-        td(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
+    let upstream_pre = td(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![3, 2]);
     let upstream = upstream_pre.permute(&[1, 0]); // shape [2, 3] strided
     // flatten to [6] by hand to match the View output shape
     let upstream_flat = TensorData::new(values(&upstream), vec![6]);
@@ -588,7 +596,9 @@ fn test_backward_permute_3d() {
     let upstream = td(upstream_storage, vec![4, 2, 3]);
     let grad = run_unary_backward(
         x,
-        TensorOp::Permute { axes: vec![2, 0, 1] },
+        TensorOp::Permute {
+            axes: vec![2, 0, 1],
+        },
         y,
         upstream.clone(),
     );
@@ -610,12 +620,7 @@ fn test_backward_matmul_2d() {
     );
     let c = SimpleOps::matmul(&a, &b);
     assert_eq!(c.shape, vec![2, 4]);
-    let upstream = td(
-        vec![
-            1.0, 0.5, -1.0, 2.0, 0.3, 1.5, -0.5, 1.0,
-        ],
-        vec![2, 4],
-    );
+    let upstream = td(vec![1.0, 0.5, -1.0, 2.0, 0.3, 1.5, -0.5, 1.0], vec![2, 4]);
     let (a_grad, b_grad) = run_binary_backward(
         a.clone(),
         b.clone(),
@@ -716,7 +721,8 @@ fn test_backward_seeds_with_ones() {
 // (clear_gradients prevents accumulation across calls).
 #[test]
 fn test_backward_idempotent_after_clear() {
-    let x = Tensor::from_data(td(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2])).requires_grad();
+    let x =
+        Tensor::from_data(td(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2])).requires_grad();
     let y = sum_all(x.sigmoid());
     y.backward();
     let g1 = x.grad().expect("grad");
@@ -763,10 +769,18 @@ fn test_clear_gradients_wipes_intermediates() {
         let graph = x.history.as_ref().unwrap().graph.borrow();
         // every node should have Some(gradient) right now
         for node in &graph.nodes {
-            assert!(node.gradient.is_some(), "expected all nodes to have grads after backward");
+            assert!(
+                node.gradient.is_some(),
+                "expected all nodes to have grads after backward"
+            );
         }
     }
-    x.history.as_ref().unwrap().graph.borrow_mut().clear_gradients();
+    x.history
+        .as_ref()
+        .unwrap()
+        .graph
+        .borrow_mut()
+        .clear_gradients();
     {
         let graph = x.history.as_ref().unwrap().graph.borrow();
         for node in &graph.nodes {
@@ -805,7 +819,8 @@ fn test_backward_panics_on_non_scalar_output() {
 // This must not trip the scalar assert — sum_all produces exactly this shape.
 #[test]
 fn test_backward_accepts_1element_multidim_output() {
-    let x = Tensor::from_data(td(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2])).requires_grad();
+    let x =
+        Tensor::from_data(td(vec![1.0, 2.0, 3.0, 4.0], vec![2, 2])).requires_grad();
     let y = sum_all(x.sigmoid()); // shape ends up [1, 1], size 1
     assert_eq!(y.size(), 1);
     y.backward(); // must not panic
@@ -818,11 +833,8 @@ fn test_backward_accepts_1element_multidim_output() {
 // combined map+View+contiguous regression as an end-to-end Tensor-API test.
 #[test]
 fn test_backward_view_through_sigmoid_produces_tight_grad() {
-    let x = Tensor::from_data(td(
-        vec![0.5, -0.3, 1.0, -1.2, 0.7, 0.2],
-        vec![2, 3],
-    ))
-    .requires_grad();
+    let x = Tensor::from_data(td(vec![0.5, -0.3, 1.0, -1.2, 0.7, 0.2], vec![2, 3]))
+        .requires_grad();
     let y = sum_all(x.sigmoid().view(&[6]));
     y.backward();
     let g = x.grad().expect("grad should exist");

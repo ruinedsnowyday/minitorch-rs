@@ -60,7 +60,7 @@ impl TensorOps for SimpleOps {
             dim < input.shape.len(),
             "Can't reduce along axis {} for tensor with dimensions {:?}",
             dim,
-            &input.shape
+            input.shape
         );
         let target_shape: Vec<usize> = input
             .shape

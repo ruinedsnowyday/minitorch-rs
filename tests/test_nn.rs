@@ -1,4 +1,4 @@
-use minitorch_rs::autodiff::{central_difference, ScalarGraph, ScalarOp};
+use minitorch_rs::autodiff::{ScalarGraph, ScalarOp, central_difference};
 use minitorch_rs::module::Module;
 use minitorch_rs::nn::Linear;
 
@@ -41,10 +41,7 @@ fn test_linear_forward_backward_step_roundtrip() {
     model.biases = vec![0.5, 0.6];
 
     let mut graph = ScalarGraph::new();
-    let x_ids: Vec<_> = [3.0_f64, 5.0]
-        .iter()
-        .map(|v| graph.add_leaf(*v))
-        .collect();
+    let x_ids: Vec<_> = [3.0_f64, 5.0].iter().map(|v| graph.add_leaf(*v)).collect();
 
     // --- forward ---
     let y_ids = model.forward(&mut graph, x_ids);
@@ -93,20 +90,14 @@ fn test_linear_backward_through_sum() {
     model.biases = vec![0.5, 0.6];
 
     let mut graph = ScalarGraph::new();
-    let x_ids: Vec<_> = [3.0_f64, 5.0]
-        .iter()
-        .map(|v| graph.add_leaf(*v))
-        .collect();
+    let x_ids: Vec<_> = [3.0_f64, 5.0].iter().map(|v| graph.add_leaf(*v)).collect();
     let x0_id = x_ids[0];
     let x1_id = x_ids[1];
 
     let y_ids = model.forward(&mut graph, x_ids);
 
     let loss_id = graph.apply(
-        ScalarOp::Add(
-            graph.get_node(y_ids[0]).out,
-            graph.get_node(y_ids[1]).out,
-        ),
+        ScalarOp::Add(graph.get_node(y_ids[0]).out, graph.get_node(y_ids[1]).out),
         vec![y_ids[0], y_ids[1]],
     );
 
@@ -143,14 +134,12 @@ fn test_linear_gradient_matches_central_difference() {
     model.biases = vec![0.5];
 
     let mut graph = ScalarGraph::new();
-    let x_ids: Vec<_> = [3.0_f64, 5.0]
-        .iter()
-        .map(|v| graph.add_leaf(*v))
-        .collect();
+    let x_ids: Vec<_> = [3.0_f64, 5.0].iter().map(|v| graph.add_leaf(*v)).collect();
     let y_ids = model.forward(&mut graph, x_ids);
     graph.backpropagate(y_ids[0], 1.0);
-    let autodiff_grad =
-        graph.get_node(model.weight_ids.as_ref().unwrap()[0][0]).gradient;
+    let autodiff_grad = graph
+        .get_node(model.weight_ids.as_ref().unwrap()[0][0])
+        .gradient;
 
     // numerical path: treat the whole forward pass as a function of W[0][0]
     let f = |params: &[f64]| -> f64 {

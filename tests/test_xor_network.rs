@@ -8,10 +8,7 @@ use minitorch_rs::xor_network::Network;
 fn test_network_forward_output_in_sigmoid_range() {
     let mut net = Network::new(2, 4, 1);
     let mut graph = ScalarGraph::new();
-    let x_ids: Vec<_> = [0.3_f64, 0.7]
-        .iter()
-        .map(|v| graph.add_leaf(*v))
-        .collect();
+    let x_ids: Vec<_> = [0.3_f64, 0.7].iter().map(|v| graph.add_leaf(*v)).collect();
 
     let y_ids = net.forward(&mut graph, x_ids);
 
@@ -40,10 +37,7 @@ fn test_network_step_recursion_updates_all_layers() {
     let l3_before = net.l3.weights.clone();
 
     let mut graph = ScalarGraph::new();
-    let x_ids: Vec<_> = [0.3_f64, 0.7]
-        .iter()
-        .map(|v| graph.add_leaf(*v))
-        .collect();
+    let x_ids: Vec<_> = [0.3_f64, 0.7].iter().map(|v| graph.add_leaf(*v)).collect();
     let y_ids = net.forward(&mut graph, x_ids);
 
     // backward from the output as if it were the loss

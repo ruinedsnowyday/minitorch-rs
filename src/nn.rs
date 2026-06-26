@@ -131,9 +131,11 @@ impl Module for Linear {
         {
             let mut grad: f64;
             for i in 0..self.out_size {
-                for j in 0..self.in_size {
-                    grad = graph.get_node(weight_ids[i][j]).gradient;
-                    self.weights[i][j] -= grad * lr;
+                for (weight_id, weight) in
+                    weight_ids[i].iter().zip(self.weights[i].iter_mut())
+                {
+                    grad = graph.get_node(*weight_id).gradient;
+                    *weight -= grad * lr;
                 }
                 grad = graph.get_node(bias_ids[i]).gradient;
                 self.biases[i] -= grad * lr;

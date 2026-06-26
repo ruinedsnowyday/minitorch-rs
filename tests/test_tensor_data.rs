@@ -1,6 +1,6 @@
 use std::rc::Rc;
 
-use minitorch_rs::tensor_data::{contiguous_strides, TensorData};
+use minitorch_rs::tensor_data::{TensorData, contiguous_strides};
 use proptest::prelude::*;
 
 // ===================================================================
@@ -164,10 +164,7 @@ fn test_flat_index_3d() {
 
 #[test]
 fn test_get_reads_correct_element() {
-    let t = TensorData::new(
-        vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0],
-        vec![2, 3],
-    );
+    let t = TensorData::new(vec![10.0, 20.0, 30.0, 40.0, 50.0, 60.0], vec![2, 3]);
     assert_eq!(t.get(&[0, 0]), 10.0);
     assert_eq!(t.get(&[0, 2]), 30.0);
     assert_eq!(t.get(&[1, 0]), 40.0);
@@ -221,10 +218,10 @@ fn test_size_zero_dim_is_one() {
 
 #[test]
 fn test_ndim() {
-    assert_eq!(TensorData::zeros(vec![5]).ndim(),       1);
-    assert_eq!(TensorData::zeros(vec![3, 4]).ndim(),    2);
+    assert_eq!(TensorData::zeros(vec![5]).ndim(), 1);
+    assert_eq!(TensorData::zeros(vec![3, 4]).ndim(), 2);
     assert_eq!(TensorData::zeros(vec![2, 3, 4]).ndim(), 3);
-    assert_eq!(TensorData::zeros(vec![]).ndim(),        0);
+    assert_eq!(TensorData::zeros(vec![]).ndim(), 0);
 }
 
 // ===================================================================
@@ -259,17 +256,14 @@ fn test_permute_2d_transpose() {
 fn test_permute_3d_rotation() {
     let t = TensorData::zeros(vec![2, 3, 4]); // strides [12, 4, 1]
     let p = t.permute(&[2, 0, 1]);
-    assert_eq!(p.shape,   vec![4, 2, 3]);
+    assert_eq!(p.shape, vec![4, 2, 3]);
     assert_eq!(p.strides, vec![1, 12, 4]);
 }
 
 // permute must NOT copy storage — it's the whole point of strided views.
 #[test]
 fn test_permute_shares_storage() {
-    let t = TensorData::new(
-        (0..12).map(|i| i as f64).collect(),
-        vec![3, 4],
-    );
+    let t = TensorData::new((0..12).map(|i| i as f64).collect(), vec![3, 4]);
     let p = t.permute(&[1, 0]);
     assert!(Rc::ptr_eq(&t.storage, &p.storage));
 }
@@ -279,10 +273,7 @@ fn test_permute_shares_storage() {
 // T_transposed[j, i].
 #[test]
 fn test_permute_view_consistent_with_original() {
-    let t = TensorData::new(
-        vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        vec![2, 3],
-    );
+    let t = TensorData::new(vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0], vec![2, 3]);
     let p = t.permute(&[1, 0]); // shape [3, 2]
     for i in 0..2 {
         for j in 0..3 {
@@ -303,8 +294,12 @@ fn test_iter_indices_2d() {
     assert_eq!(
         indices,
         vec![
-            vec![0, 0], vec![0, 1], vec![0, 2],
-            vec![1, 0], vec![1, 1], vec![1, 2],
+            vec![0, 0],
+            vec![0, 1],
+            vec![0, 2],
+            vec![1, 0],
+            vec![1, 1],
+            vec![1, 2],
         ]
     );
 }
@@ -320,7 +315,7 @@ fn test_iter_indices_3d_first_and_last() {
     let t = TensorData::zeros(vec![2, 3, 4]);
     let indices: Vec<Vec<usize>> = t.iter_indices().collect();
     assert_eq!(indices.first().unwrap(), &vec![0, 0, 0]);
-    assert_eq!(indices.last().unwrap(),  &vec![1, 2, 3]);
+    assert_eq!(indices.last().unwrap(), &vec![1, 2, 3]);
 }
 
 #[test]
@@ -454,7 +449,11 @@ fn test_offset_at_packed_offset_view_shifts_by_storage_offset() {
         strides: vec![2, 1],
     };
     let offsets: Vec<usize> = (0..t.size()).map(|p| t.offset_at(p)).collect();
-    assert_eq!(offsets, vec![2, 3, 4, 5], "packed view → storage_offset + p");
+    assert_eq!(
+        offsets,
+        vec![2, 3, 4, 5],
+        "packed view → storage_offset + p"
+    );
 }
 
 // 0-d scalar: the single element (p=0) lives at storage_offset.

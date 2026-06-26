@@ -18,7 +18,9 @@
 use std::hint::black_box;
 use std::time::Duration;
 
-use criterion::{BenchmarkId, Criterion, Throughput, criterion_group, criterion_main};
+use criterion::{
+    BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
+};
 use rand::Rng;
 
 use minitorch_rs::fast_ops::FastOps;
@@ -115,7 +117,9 @@ fn bench_reduce(c: &mut Criterion) {
         let a = random(vec![n, n]);
         group.throughput(Throughput::Elements((n * n) as u64));
         group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
-            bch.iter(|| SimpleOps::reduce(black_box(&a), |x, y| x + y, 0.0, 0, false));
+            bch.iter(|| {
+                SimpleOps::reduce(black_box(&a), |x, y| x + y, 0.0, 0, false)
+            });
         });
         group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
             bch.iter(|| FastOps::reduce(black_box(&a), |x, y| x + y, 0.0, 0, false));
@@ -163,10 +167,14 @@ fn bench_reduce_contiguous(c: &mut Criterion) {
         let last = 1usize; // [n, n] → last axis index
         group.throughput(Throughput::Elements((n * n) as u64));
         group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
-            bch.iter(|| SimpleOps::reduce(black_box(&a), |x, y| x + y, 0.0, last, false));
+            bch.iter(|| {
+                SimpleOps::reduce(black_box(&a), |x, y| x + y, 0.0, last, false)
+            });
         });
         group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
-            bch.iter(|| FastOps::reduce(black_box(&a), |x, y| x + y, 0.0, last, false));
+            bch.iter(|| {
+                FastOps::reduce(black_box(&a), |x, y| x + y, 0.0, last, false)
+            });
         });
     }
     group.finish();
