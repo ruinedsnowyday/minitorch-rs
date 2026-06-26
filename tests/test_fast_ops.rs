@@ -1,3 +1,5 @@
+#![feature(portable_simd)]
+
 //! Cross-backend equivalence: `FastOps` must agree with `SimpleOps`
 //! element-for-element, on every layout kind. `SimpleOps` is the trusted
 //! oracle (already covered by `test_tensor_ops.rs`); these tests catch the
@@ -6,10 +8,16 @@
 //! actually packed.
 
 use std::rc::Rc;
+use std::simd::Simd;
 
 use minitorch_rs::fast_ops::FastOps;
 use minitorch_rs::operators;
-use minitorch_rs::simd_ops::SimdReLU;
+use minitorch_rs::simd_ops::{
+    BinaryOp, LANES, SimdAdd, SimdEq, SimdExp, SimdId, SimdInv, SimdInvBack,
+    SimdLeakyReLU, SimdLeakyReLUBack, SimdLog, SimdLogBack, SimdLt, SimdMax,
+    SimdMul, SimdNeg, SimdReLU, SimdReLUBack, SimdSigmoid, SimdSigmoidBack,
+    UnaryOp,
+};
 use minitorch_rs::tensor_data::TensorData;
 use minitorch_rs::tensor_ops::{SimpleOps, TensorOps};
 use proptest::prelude::*;
@@ -762,5 +770,241 @@ proptest! {
     fn prop_map_op_relu_transposed(rows in 1usize..=6, cols in 1usize..=6) {
         let t = TensorData::new(signed_seq(rows * cols), vec![rows, cols]);
         assert_relu_matches_oracle::<4>(&t.permute(&[1, 0]));
+    }
+}
+
+// ===================================================================
+// zip_op — SIMD-vectorized binary zip, cross-backend equivalence
+//
+// FastOps::zip_op::<Op, N> must equal the scalar oracle
+// SimpleOps::zip(_, _, f). The SIMD path only fires when BOTH operands are
+// packed (same shape, no broadcasting); any broadcast or strided operand drops
+// to the scalar fallback (FastOps::zip with Op::scalar). So the cases below
+// split into "both packed → SIMD (true,true) arm" and "broadcast/strided →
+// fallback", both orderings.
+//
+// The op is asymmetric (2a - b): a swapped a/b pairing in the SIMD arm — which
+// a symmetric add/mul would hide — surfaces as a mismatch. Inputs are small
+// integers/halves, so 2a - b is exact in f64 and storage comparison is exact.
+// ===================================================================
+
+fn axmy(a: f64, b: f64) -> f64 {
+    2.0 * a - b
+}
+
+// Asymmetric test fixture op, mirroring `axmy` in scalar and SIMD form.
+struct AxmyOp;
+impl BinaryOp for AxmyOp {
+    fn scalar(a: f64, b: f64) -> f64 {
+        axmy(a, b)
+    }
+    fn simd<const N: usize>(a: Simd<f64, N>, b: Simd<f64, N>) -> Simd<f64, N> {
+        Simd::splat(2.0) * a - b
+    }
+}
+
+fn assert_zip_op_matches_oracle<const N: usize>(a: &TensorData, b: &TensorData) {
+    let fast = FastOps::zip_op::<AxmyOp, N>(a, b);
+    let oracle = SimpleOps::zip(a, b, axmy);
+    assert_eq!(
+        fast.shape, oracle.shape,
+        "shape mismatch: N={} a={:?} b={:?}",
+        N, a.shape, b.shape
+    );
+    assert_eq!(
+        &*fast.storage, &*oracle.storage,
+        "storage mismatch: N={} a(shape={:?} strides={:?} off={}) b(shape={:?} strides={:?} off={})",
+        N, a.shape, a.strides, a.storage_offset, b.shape, b.strides, b.storage_offset
+    );
+}
+
+// Hand-computed anchor (independent of the oracle). Both packed [5] at N=4 → one
+// SIMD chunk + a 1-element tail. 2a - b = [2-10, 4-20, 6-30, 8-40, 10-50].
+#[test]
+fn test_zip_op_hand_computed() {
+    let a = TensorData::new(vec![1., 2., 3., 4., 5.], vec![5]);
+    let b = TensorData::new(vec![10., 20., 30., 40., 50.], vec![5]);
+    let out = FastOps::zip_op::<AxmyOp, 4>(&a, &b);
+    assert_eq!(out.shape, vec![5]);
+    assert_eq!(&*out.storage, &vec![-8., -16., -24., -32., -40.]);
+}
+
+// A real framework op (SimdAdd) through zip_op, not just the synthetic fixture.
+#[test]
+fn test_zip_op_real_add() {
+    let a = TensorData::new(vec![1., 2., 3., 4., 5.], vec![5]);
+    let b = TensorData::new(vec![10., 20., 30., 40., 50.], vec![5]);
+    let out = FastOps::zip_op::<SimdAdd, 4>(&a, &b);
+    assert_eq!(&*out.storage, &vec![11., 22., 33., 44., 55.]);
+}
+
+// Both packed, same shape → the SIMD (true,true) arm. Sweep lengths so every
+// tail size for N=4 and N=8 is hit.
+#[test]
+fn test_zip_op_contiguous_various_lengths() {
+    for n in 1..=20 {
+        let a = TensorData::new(signed_seq(n), vec![n]);
+        let b = TensorData::new((0..n).map(|i| i as f64 * 0.5 - 3.0).collect(), vec![n]);
+        assert_zip_op_matches_oracle::<4>(&a, &b);
+        assert_zip_op_matches_oracle::<8>(&a, &b);
+    }
+}
+
+// Broadcast bias: [4,3] + [3]. The row broadcasts → its view isn't packed →
+// fallback; the swap exercises the other ordering.
+#[test]
+fn test_zip_op_broadcast_bias_and_swap() {
+    let a = TensorData::new(signed_seq(12), vec![4, 3]);
+    let row = TensorData::new(vec![1., -2., 3.], vec![3]);
+    assert_zip_op_matches_oracle::<4>(&a, &row);
+    assert_zip_op_matches_oracle::<4>(&row, &a);
+}
+
+// One transposed (strided) operand vs a contiguous one, both orderings; then
+// both strided.
+#[test]
+fn test_zip_op_strided_operands() {
+    let a = TensorData::new(signed_seq(6), vec![2, 3]);
+    let b = TensorData::new((10..16).map(|i| i as f64).collect(), vec![3, 2])
+        .permute(&[1, 0]); // [2,3], strided
+    assert_zip_op_matches_oracle::<4>(&a, &b);
+    assert_zip_op_matches_oracle::<4>(&b, &a);
+
+    let a_t = TensorData::new(signed_seq(6), vec![3, 2]).permute(&[1, 0]);
+    assert_zip_op_matches_oracle::<4>(&a_t, &b);
+}
+
+proptest! {
+    // Same-shape contiguous (the SIMD arm) over every tail size, three widths.
+    #[test]
+    fn prop_zip_op_same_shape(n in 1usize..=128) {
+        let a = TensorData::new(signed_seq(n), vec![n]);
+        let b = TensorData::new((0..n).map(|i| i as f64 * 1.5 - 2.0).collect(), vec![n]);
+        assert_zip_op_matches_oracle::<2>(&a, &b);
+        assert_zip_op_matches_oracle::<4>(&a, &b);
+        assert_zip_op_matches_oracle::<8>(&a, &b);
+    }
+
+    // Row broadcast (fallback path), both orderings, across many shapes.
+    #[test]
+    fn prop_zip_op_row_broadcast(rows in 1usize..=5, cols in 1usize..=5) {
+        let mat = TensorData::new(signed_seq(rows * cols), vec![rows, cols]);
+        let row = TensorData::new((0..cols).map(|i| i as f64 - 1.5).collect(), vec![cols]);
+        assert_zip_op_matches_oracle::<4>(&mat, &row);
+        assert_zip_op_matches_oracle::<4>(&row, &mat);
+    }
+}
+
+// ===================================================================
+// All ops × scalar oracle — correctness coverage for every Simd* op
+//
+// Every Op::scalar delegates to the trusted operators::X, so for ANY op the
+// oracle is SimpleOps::{map,zip}(_, Op::scalar). Inputs are contiguous (so the
+// SIMD path runs, not the scalar fallback) and respect each op's domain.
+// Comparison is:
+//   * exact  — arithmetic / compare / select ops (SIMD and scalar run the same
+//     IEEE ops, so they agree bit-for-bit)
+//   * approx — ops through exp / ln / recip, where StdFloat diverges from scalar
+//     by a few ULP; relative tolerance 1e-9 with an absolute 1e-9 floor.
+// Lengths 1..=20 sweep every tail size for LANES=8; layout coverage (strided /
+// broadcast / offset) lives in the relu/add sections above.
+// ===================================================================
+
+// distinct "gradient" / second operand for the binary ops; straddles zero.
+fn grad_seq(n: usize) -> Vec<f64> {
+    (0..n).map(|i| i as f64 * 0.5 - 2.0).collect()
+}
+
+// strictly positive, for the log-domain ops.
+fn positive_seq(n: usize) -> Vec<f64> {
+    (0..n).map(|i| (i + 1) as f64 * 0.5).collect()
+}
+
+fn check_map_exact<Op: UnaryOp, const N: usize>(input: &TensorData) {
+    let fast = FastOps::map_op::<Op, N>(input);
+    let oracle = SimpleOps::map(input, Op::scalar);
+    assert_eq!(fast.shape, oracle.shape);
+    assert_eq!(
+        &*fast.storage, &*oracle.storage,
+        "exact map mismatch, len={}",
+        input.size()
+    );
+}
+
+fn check_map_approx<Op: UnaryOp, const N: usize>(input: &TensorData) {
+    let fast = FastOps::map_op::<Op, N>(input);
+    let oracle = SimpleOps::map(input, Op::scalar);
+    assert_eq!(fast.shape, oracle.shape);
+    for (&f, &o) in fast.storage.iter().zip(oracle.storage.iter()) {
+        assert!(
+            (f - o).abs() <= 1e-9 * o.abs().max(1.0),
+            "approx map mismatch: simd={f} scalar={o}, len={}",
+            input.size()
+        );
+    }
+}
+
+fn check_zip_exact<Op: BinaryOp, const N: usize>(a: &TensorData, b: &TensorData) {
+    let fast = FastOps::zip_op::<Op, N>(a, b);
+    let oracle = SimpleOps::zip(a, b, Op::scalar);
+    assert_eq!(fast.shape, oracle.shape);
+    assert_eq!(
+        &*fast.storage, &*oracle.storage,
+        "exact zip mismatch, len={}",
+        a.size()
+    );
+}
+
+fn check_zip_approx<Op: BinaryOp, const N: usize>(a: &TensorData, b: &TensorData) {
+    let fast = FastOps::zip_op::<Op, N>(a, b);
+    let oracle = SimpleOps::zip(a, b, Op::scalar);
+    assert_eq!(fast.shape, oracle.shape);
+    for (&f, &o) in fast.storage.iter().zip(oracle.storage.iter()) {
+        assert!(
+            (f - o).abs() <= 1e-9 * o.abs().max(1.0),
+            "approx zip mismatch: simd={f} scalar={o}, len={}",
+            a.size()
+        );
+    }
+}
+
+#[test]
+fn test_all_unary_ops_match_scalar() {
+    for n in 1..=20 {
+        let s = TensorData::new(signed_seq(n), vec![n]); // nonzero, straddles 0
+        let p = TensorData::new(positive_seq(n), vec![n]); // > 0
+        // exact: arithmetic / select
+        check_map_exact::<SimdReLU, LANES>(&s);
+        check_map_exact::<SimdNeg, LANES>(&s);
+        check_map_exact::<SimdId, LANES>(&s);
+        check_map_exact::<SimdLeakyReLU, LANES>(&s);
+        // approx: through exp / recip (general domain)
+        check_map_approx::<SimdSigmoid, LANES>(&s);
+        check_map_approx::<SimdExp, LANES>(&s);
+        check_map_approx::<SimdInv, LANES>(&s);
+        // approx: through ln (positive domain)
+        check_map_approx::<SimdLog, LANES>(&p);
+    }
+}
+
+#[test]
+fn test_all_binary_ops_match_scalar() {
+    for n in 1..=20 {
+        let s = TensorData::new(signed_seq(n), vec![n]); // nonzero, straddles 0
+        let p = TensorData::new(positive_seq(n), vec![n]); // > 0
+        let d = TensorData::new(grad_seq(n), vec![n]); // second operand / upstream grad
+        // real binary ops, exact
+        check_zip_exact::<SimdAdd, LANES>(&s, &d);
+        check_zip_exact::<SimdMul, LANES>(&s, &d);
+        check_zip_exact::<SimdMax, LANES>(&s, &d);
+        check_zip_exact::<SimdLt, LANES>(&s, &d); // mixed true/false
+        check_zip_exact::<SimdEq, LANES>(&s, &s); // all-equal → exercises the true branch
+        // backward derivatives, exact (arithmetic / select)
+        check_zip_exact::<SimdReLUBack, LANES>(&s, &d);
+        check_zip_exact::<SimdLeakyReLUBack, LANES>(&s, &d);
+        check_zip_exact::<SimdSigmoidBack, LANES>(&s, &d);
+        // backward derivatives, approx (through recip)
+        check_zip_approx::<SimdLogBack, LANES>(&p, &d); // value > 0
+        check_zip_approx::<SimdInvBack, LANES>(&s, &d); // value ≠ 0
     }
 }

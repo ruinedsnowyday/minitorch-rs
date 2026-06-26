@@ -1,7 +1,7 @@
-const EPS: f64 = 1e-6;
+pub const EPS: f64 = 1e-6;
 
 /// leaky ReLU negative slope constant
-const ALPHA: f64 = 1e-2;
+pub const ALPHA: f64 = 1e-2;
 
 pub fn mul(a: f64, b: f64) -> f64 {
     a * b

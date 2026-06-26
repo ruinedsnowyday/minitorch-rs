@@ -197,7 +197,10 @@ impl FastOps {
         TensorData::new(storage, input.shape.clone())
     }
 
-    fn zip_op<Op: BinaryOp>(a: &TensorData, b: &TensorData) -> TensorData {
+    pub fn zip_op<Op: BinaryOp, const N: usize>(
+        a: &TensorData,
+        b: &TensorData,
+    ) -> TensorData {
         let out_shape = broadcast_shape(&a.shape, &b.shape);
         let a_view = a.broadcast_to(&out_shape);
         let size = a_view.size();
@@ -206,65 +209,34 @@ impl FastOps {
         let b_offset = b_view.storage_offset;
         let a_data: &[f64];
         let b_data: &[f64];
-        let storage = match (a_view.is_packed(), b_view.is_packed()) {
+        let tail = size % N;
+        let body = size - tail;
+        match (a_view.is_packed(), b_view.is_packed()) {
             (true, true) => {
                 a_data = &a_view.storage[a_offset..a_offset + size];
                 b_data = &b_view.storage[b_offset..b_offset + size];
-                a_data
-                    .par_iter()
-                    .zip(b_data)
-                    .map(|(&a_val, &b_val)| (a_val, b_val))
-                    .collect()
-            }
-            (true, false) => {
-                a_data = &a_view.storage[a_offset..a_offset + size];
-                b_data = &b_view.storage[..];
-                let b_shape: &[usize] = &b_view.shape[..];
-                let b_strides: &[usize] = &b_view.strides[..];
-                (0..size)
-                    .into_par_iter()
-                    .map(|p| {
-                        f(
-                            a_data[p],
-                            b_data[offset_at(p, b_offset, b_shape, b_strides)],
+                let (a_body, a_tail) = a_data.split_at(body);
+                let (b_body, b_tail) = b_data.split_at(body);
+                let mut out = vec![0.; size];
+                out.par_chunks_exact_mut(N)
+                    .zip(a_body.par_chunks_exact(N).zip(b_body.par_chunks_exact(N)))
+                    .for_each(|(dst, (a_src, b_src))| {
+                        Op::simd(
+                            Simd::<f64, N>::from_slice(a_src),
+                            Simd::<f64, N>::from_slice(b_src),
                         )
-                    })
-                    .collect()
+                        .copy_to_slice(dst)
+                    });
+                out[body..]
+                    .iter_mut()
+                    .zip(a_tail.iter().zip(b_tail.iter()))
+                    .for_each(|(dst, (&a_src, &b_src))| {
+                        *dst = Op::scalar(a_src, b_src)
+                    });
+                TensorData::new(out, out_shape)
             }
-            (false, true) => {
-                b_data = &b_view.storage[b_offset..b_offset + size];
-                a_data = &a_view.storage[..];
-                let a_shape: &[usize] = &a_view.shape[..];
-                let a_strides: &[usize] = &a_view.strides[..];
-                (0..size)
-                    .into_par_iter()
-                    .map(|p| {
-                        f(
-                            a_data[offset_at(p, a_offset, a_shape, a_strides)],
-                            b_data[p],
-                        )
-                    })
-                    .collect()
-            }
-            (false, false) => {
-                a_data = &a_view.storage[..];
-                b_data = &b_view.storage[..];
-                let a_shape: &[usize] = &a_view.shape[..];
-                let b_shape: &[usize] = &b_view.shape[..];
-                let a_strides: &[usize] = &a_view.strides[..];
-                let b_strides: &[usize] = &b_view.strides[..];
-                (0..size)
-                    .into_par_iter()
-                    .map(|p| {
-                        f(
-                            a_data[offset_at(p, a_offset, a_shape, a_strides)],
-                            b_data[offset_at(p, b_offset, b_shape, b_strides)],
-                        )
-                    })
-                    .collect()
-            }
-        };
-        TensorData::new(storage, out_shape)
+            _ => FastOps::zip(a, b, Op::scalar),
+        }
     }
 }
 /// Performs batch-row-parallel matrix multiplication between two tensors with shapes

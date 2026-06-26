@@ -5,10 +5,14 @@ use std::{
 };
 
 use crate::{
+    fast_ops::FastOps,
     operators,
+    simd_ops::{
+        LANES, SimdAdd, SimdExp, SimdLog, SimdMul, SimdNeg, SimdReLU, SimdSigmoid,
+    },
     tensor_autodiff::{TensorGraph, TensorNodeId, TensorOp},
     tensor_data::{TensorData, contiguous_strides},
-    tensor_ops::{SimpleOps, TensorOps},
+    tensor_ops::TensorOps,
 };
 
 /// Tensor struct holding the reference to the actual data as well as optionally
@@ -96,19 +100,19 @@ impl Tensor {
 
     pub fn relu(&self) -> Tensor {
         make_unary_op(self, TensorOp::ReLU, |in_data| {
-            SimpleOps::map(in_data, operators::relu)
+            FastOps::map_op::<SimdReLU, LANES>(in_data)
         })
     }
 
     pub fn sigmoid(&self) -> Tensor {
         make_unary_op(self, TensorOp::Sigmoid, |in_data| {
-            SimpleOps::map(in_data, operators::sigmoid)
+            FastOps::map_op::<SimdSigmoid, LANES>(in_data)
         })
     }
 
     pub fn log(&self) -> Tensor {
         make_unary_op(self, TensorOp::Log, |in_data| {
-            SimpleOps::map(in_data, operators::log)
+            FastOps::map_op::<SimdLog, LANES>(in_data)
         })
     }
 
@@ -118,13 +122,13 @@ impl Tensor {
             TensorOp::Sum {
                 orig_shape: self.shape().to_vec(),
             },
-            |in_data| SimpleOps::reduce(in_data, operators::add, 0., dim, true),
+            |in_data| FastOps::reduce(in_data, operators::add, 0., dim, true),
         )
     }
 
     pub fn exp(&self) -> Tensor {
         make_unary_op(self, TensorOp::Exp, |in_data| {
-            SimpleOps::map(in_data, operators::exp)
+            FastOps::map_op::<SimdExp, LANES>(in_data)
         })
     }
 
@@ -169,7 +173,7 @@ impl Tensor {
     /// if present
     pub fn matmul(&self, right: &Tensor) -> Tensor {
         make_binary_op_ref(self, right, TensorOp::MatMul, |l, r| {
-            SimpleOps::matmul(l, r)
+            FastOps::matmul(l, r)
         })
     }
 
@@ -296,7 +300,7 @@ impl Add<&Tensor> for &Tensor {
 
     fn add(self, rhs: &Tensor) -> Self::Output {
         make_binary_op_ref(self, rhs, TensorOp::Add, |d1, d2| {
-            SimpleOps::zip(d1, d2, operators::add)
+            FastOps::zip_op::<SimdAdd, LANES>(d1, d2)
         })
     }
 }
@@ -314,7 +318,7 @@ impl Mul<&Tensor> for &Tensor {
 
     fn mul(self, rhs: &Tensor) -> Self::Output {
         make_binary_op_ref(self, rhs, TensorOp::Mul, |d1, d2| {
-            SimpleOps::zip(d1, d2, operators::mul)
+            FastOps::zip_op::<SimdMul, LANES>(d1, d2)
         })
     }
 }
@@ -331,7 +335,9 @@ impl Neg for &Tensor {
     type Output = Tensor;
 
     fn neg(self) -> Self::Output {
-        make_unary_op(self, TensorOp::Neg, |d| SimpleOps::map(d, operators::neg))
+        make_unary_op(self, TensorOp::Neg, |d| {
+            FastOps::map_op::<SimdNeg, LANES>(d)
+        })
     }
 }
 
