@@ -1,12 +1,15 @@
+use std::simd::Simd;
+
 use rayon::{
     iter::{
         IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
         ParallelIterator,
     },
-    slice::ParallelSliceMut,
+    slice::{ParallelSlice, ParallelSliceMut},
 };
 
 use crate::{
+    simd_ops::{BinaryOp, UnaryOp},
     tensor_data::{TensorData, offset_at},
     tensor_ops::{TensorOps, broadcast_shape},
 };
@@ -122,7 +125,7 @@ impl TensorOps for FastOps {
             dim < input.shape.len(),
             "Can't reduce along axis {} for tensor with dimensions {:?}",
             dim,
-            &input.shape
+            input.shape
         );
         let mut target_shape: Vec<usize> = input
             .shape
@@ -161,6 +164,109 @@ impl TensorOps for FastOps {
     }
 }
 
+impl FastOps {
+    pub fn map_op<Op: UnaryOp, const N: usize>(input: &TensorData) -> TensorData {
+        let offset = input.storage_offset;
+        let size = input.size();
+        let tail = size % N;
+        let body = size - tail;
+        let storage = if input.is_packed() {
+            let simd_slice = &input.storage[offset..offset + body];
+            let tail_slice = &input.storage[offset + body..offset + size];
+            let mut out: Vec<f64> = vec![0.; size];
+            out.par_chunks_exact_mut(N)
+                .zip(simd_slice.par_chunks_exact(N))
+                .for_each(|(dst, src)| {
+                    Op::simd(Simd::<f64, N>::from_slice(src)).copy_to_slice(dst);
+                });
+            out[body..]
+                .iter_mut()
+                .zip(tail_slice)
+                .for_each(|(dst, &src)| *dst = Op::scalar(src));
+            out
+        } else {
+            let data: &[f64] = &input.storage[..];
+            let offset = input.storage_offset;
+            let shape: &[usize] = &input.shape[..];
+            let strides: &[usize] = &input.strides[..];
+            (0..size)
+                .into_par_iter()
+                .map(|idx| Op::scalar(data[offset_at(idx, offset, shape, strides)]))
+                .collect()
+        };
+        TensorData::new(storage, input.shape.clone())
+    }
+
+    fn zip_op<Op: BinaryOp>(a: &TensorData, b: &TensorData) -> TensorData {
+        let out_shape = broadcast_shape(&a.shape, &b.shape);
+        let a_view = a.broadcast_to(&out_shape);
+        let size = a_view.size();
+        let a_offset = a_view.storage_offset;
+        let b_view = b.broadcast_to(&out_shape);
+        let b_offset = b_view.storage_offset;
+        let a_data: &[f64];
+        let b_data: &[f64];
+        let storage = match (a_view.is_packed(), b_view.is_packed()) {
+            (true, true) => {
+                a_data = &a_view.storage[a_offset..a_offset + size];
+                b_data = &b_view.storage[b_offset..b_offset + size];
+                a_data
+                    .par_iter()
+                    .zip(b_data)
+                    .map(|(&a_val, &b_val)| (a_val, b_val))
+                    .collect()
+            }
+            (true, false) => {
+                a_data = &a_view.storage[a_offset..a_offset + size];
+                b_data = &b_view.storage[..];
+                let b_shape: &[usize] = &b_view.shape[..];
+                let b_strides: &[usize] = &b_view.strides[..];
+                (0..size)
+                    .into_par_iter()
+                    .map(|p| {
+                        f(
+                            a_data[p],
+                            b_data[offset_at(p, b_offset, b_shape, b_strides)],
+                        )
+                    })
+                    .collect()
+            }
+            (false, true) => {
+                b_data = &b_view.storage[b_offset..b_offset + size];
+                a_data = &a_view.storage[..];
+                let a_shape: &[usize] = &a_view.shape[..];
+                let a_strides: &[usize] = &a_view.strides[..];
+                (0..size)
+                    .into_par_iter()
+                    .map(|p| {
+                        f(
+                            a_data[offset_at(p, a_offset, a_shape, a_strides)],
+                            b_data[p],
+                        )
+                    })
+                    .collect()
+            }
+            (false, false) => {
+                a_data = &a_view.storage[..];
+                b_data = &b_view.storage[..];
+                let a_shape: &[usize] = &a_view.shape[..];
+                let b_shape: &[usize] = &b_view.shape[..];
+                let a_strides: &[usize] = &a_view.strides[..];
+                let b_strides: &[usize] = &b_view.strides[..];
+                (0..size)
+                    .into_par_iter()
+                    .map(|p| {
+                        f(
+                            a_data[offset_at(p, a_offset, a_shape, a_strides)],
+                            b_data[offset_at(p, b_offset, b_shape, b_strides)],
+                        )
+                    })
+                    .collect()
+            }
+        };
+        TensorData::new(storage, out_shape)
+    }
+}
 /// Performs batch-row-parallel matrix multiplication between two tensors with shapes
 /// [.., M, K] and [.., K, N] where batch shapes are broadcastable. Allocated tensors
 /// contiguously before matmul, thus using additional memory in strided cases

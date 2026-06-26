@@ -5,3 +5,5 @@
 # It is recommended to check this file in to source control so that
 # everyone who runs the test benefits from these saved cases.
 cc 4ef9ed682dfa459d3c5f5a860fe31a8174417c98ae30f640ca6de36589e7fc86 # shrinks to shape = [1, 2], keep = false
+cc 9edb7124c98bd72d59f2501b57075086e985982671924a42c555a68d0764de07 # shrinks to n = 1
+cc 13100bad53917d1567d58ecbe35d6a9b645dfc48665504f100bb48bfe2d883aa # shrinks to rows = 1, cols = 1

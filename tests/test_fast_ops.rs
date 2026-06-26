@@ -8,6 +8,8 @@
 use std::rc::Rc;
 
 use minitorch_rs::fast_ops::FastOps;
+use minitorch_rs::operators;
+use minitorch_rs::simd_ops::SimdReLU;
 use minitorch_rs::tensor_data::TensorData;
 use minitorch_rs::tensor_ops::{SimpleOps, TensorOps};
 use proptest::prelude::*;
@@ -633,4 +635,132 @@ fn test_matmul_batched_hand_computed() {
     let c = FastOps::matmul(&a, &b);
     assert_eq!(c.shape, vec![2, 2, 2]);
     assert_eq!(&*c.storage, &vec![1., 2., 3., 4., 10., 12., 14., 16.]);
+}
+
+// ===================================================================
+// map_op — SIMD-vectorized unary map, cross-backend equivalence
+//
+// FastOps::map_op::<SimdReLU, N> must equal the scalar oracle
+// SimpleOps::map(_, operators::relu) element-for-element. The failure modes
+// here are specific to the chunk/tail SIMD structure:
+//   * the scalar TAIL (the trailing len % N elements) being skipped or left
+//     un-transformed — provoked by lengths that aren't multiples of N whose
+//     tail elements are negative, so relu MUST change them (a raw passthrough
+//     can't pass);
+//   * block REORDERING from a non-order-preserving parallel collect — provoked
+//     by distinct per-index values, so any permutation shows as a mismatch;
+//   * taking the contiguous SIMD path on a non-packed view — provoked by the
+//     transposed/broadcast cases, which must fall back to the scalar branch.
+// relu here is exact in f64 (max with 0, no rounding), so storage comparison
+// is bit-exact — no epsilon.
+// ===================================================================
+
+// Alternating signs with distinct magnitudes (1, -2, 3, -4, …). Both signs
+// appear densely, so whatever the tail size, the tail holds positive values a
+// zeroed/forgotten tail would wreck AND negatives a raw-passthrough tail would
+// wreck. Distinct magnitudes also make any block reordering visible.
+fn signed_seq(n: usize) -> Vec<f64> {
+    (0..n)
+        .map(|i| {
+            let m = (i + 1) as f64;
+            if i % 2 == 0 { m } else { -m }
+        })
+        .collect()
+}
+
+fn assert_relu_matches_oracle<const N: usize>(t: &TensorData) {
+    let fast = FastOps::map_op::<SimdReLU, N>(t);
+    let oracle = SimpleOps::map(t, operators::relu);
+    assert_eq!(
+        fast.shape, oracle.shape,
+        "shape mismatch: N={} in(shape={:?} strides={:?} off={})",
+        N, t.shape, t.strides, t.storage_offset
+    );
+    assert_eq!(
+        &*fast.storage, &*oracle.storage,
+        "storage mismatch: N={} in(shape={:?} strides={:?} off={})",
+        N, t.shape, t.strides, t.storage_offset
+    );
+}
+
+// Hand-computed anchor (independent of the oracle). Length 5 at N=4 → one SIMD
+// chunk [-2,3,-1,4] then a 1-element tail [5]. The tail value is POSITIVE, so
+// it pins the tail down two ways at once: a tail left un-relu'd keeps a wrong
+// value, and a tail left as a 0-fill reads 0 instead of 5. The chunk carries
+// negatives, so a passthrough there fails too.
+#[test]
+fn test_map_op_relu_tail_hand_computed() {
+    let t = TensorData::new(vec![-2., 3., -1., 4., 5.], vec![5]);
+    let out = FastOps::map_op::<SimdReLU, 4>(&t);
+    assert_eq!(out.shape, vec![5]);
+    assert_eq!(&*out.storage, &vec![0., 3., 0., 4., 5.]);
+}
+
+// Every tail size for N=4 and N=8 (lengths 1..=20 cover leftovers 0,1,2,3,…),
+// each length's tail negative.
+#[test]
+fn test_map_op_relu_contiguous_various_lengths() {
+    for n in 1..=20 {
+        let t = TensorData::new(signed_seq(n), vec![n]);
+        assert_relu_matches_oracle::<4>(&t);
+        assert_relu_matches_oracle::<8>(&t);
+    }
+}
+
+// Transposed view: non-contiguous strides → scalar fallback, not the SIMD
+// slice path (which assumes contiguity).
+#[test]
+fn test_map_op_relu_transposed() {
+    let t = TensorData::new(signed_seq(6), vec![2, 3]);
+    assert_relu_matches_oracle::<4>(&t.permute(&[1, 0]));
+}
+
+// Broadcast view: stride-0 dim, not packed → scalar fallback.
+#[test]
+fn test_map_op_relu_broadcast() {
+    let row = TensorData::new(vec![2., -1., -3.], vec![3]);
+    assert_relu_matches_oracle::<4>(&row.broadcast_to(&[4, 3]));
+}
+
+// Packed but rooted at a non-zero offset: the SIMD path must slice from
+// storage_offset, not 0 (the two leading 9s are decoys). Length 7 leaves a
+// 3-element negative tail under N=4.
+#[test]
+fn test_map_op_relu_packed_offset_view() {
+    let t = TensorData {
+        storage: Rc::new(vec![9., 9., 3., 2., 1., 0., -1., -2., -3.]),
+        storage_offset: 2,
+        shape: vec![7],
+        strides: vec![1],
+    };
+    assert_relu_matches_oracle::<4>(&t);
+}
+
+// 0-d scalar: size 1, so the SIMD slice is empty and the lone element is all
+// tail — the degenerate end of the chunk/tail split.
+#[test]
+fn test_map_op_relu_scalar() {
+    assert_relu_matches_oracle::<4>(&TensorData::new(vec![-5.], vec![]));
+    assert_relu_matches_oracle::<4>(&TensorData::new(vec![5.], vec![]));
+}
+
+proptest! {
+    // Sweep length over every tail size for three lane widths. Decreasing
+    // signed values: the tail is negative (tail-bug bait) and every index is
+    // distinct (reorder-bug bait).
+    #[test]
+    fn prop_map_op_relu_contiguous(n in 1usize..=128) {
+        let t = TensorData::new(signed_seq(n), vec![n]);
+        assert_relu_matches_oracle::<2>(&t);
+        assert_relu_matches_oracle::<4>(&t);
+        assert_relu_matches_oracle::<8>(&t);
+    }
+
+    // Transposed views of any small 2-D shape → the scalar fallback across many
+    // stride patterns.
+    #[test]
+    fn prop_map_op_relu_transposed(rows in 1usize..=6, cols in 1usize..=6) {
+        let t = TensorData::new(signed_seq(rows * cols), vec![rows, cols]);
+        assert_relu_matches_oracle::<4>(&t.permute(&[1, 0]));
+    }
 }

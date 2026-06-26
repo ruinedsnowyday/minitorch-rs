@@ -1,0 +1,11 @@
+# Pin this project to nightly Rust.
+#
+# `std::simd` (the `portable_simd` API used by the SIMD-vectorized CPU backend in
+# fast_ops.rs) is an unstable feature, available only on the nightly channel.
+# rustup reads this file automatically for any cargo/rustc command run inside the
+# project tree, so `cargo build` / `cargo test` / `cargo bench` use nightly with
+# no `+nightly` needed. Committed to git so every machine (incl. the remote
+# benchmark box) builds with the same toolchain.
+[toolchain]
+channel = "nightly"
+components = ["rustfmt", "clippy", "rust-src"]
