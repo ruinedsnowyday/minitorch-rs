@@ -139,7 +139,8 @@ impl TensorData {
     }
 
     /// Calculates the offset of the element in storage given the ordinal. Used as a
-    /// slow path in cases when the tensor is stored non-contiguously
+    /// slow path in cases when the tensor is stored non-contiguously. Panics if
+    /// one of the shape dimensions is 0
     pub fn offset_at(&self, p: usize) -> usize {
         offset_at(p, self.storage_offset, &self.shape, &self.strides)
     }
@@ -154,7 +155,7 @@ pub fn contiguous_strides(shape: &[usize]) -> Vec<usize> {
 }
 
 /// Given the shape, strides, and storage offset, computes the offset of the given
-/// ordinal in arbitrary storage
+/// ordinal in arbitrary storage. Panics if one of the shape dimensions is 0
 pub fn offset_at(
     p: usize,
     offset: usize,

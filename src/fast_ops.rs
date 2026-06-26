@@ -50,30 +50,63 @@ impl TensorOps for FastOps {
         let b_offset = b_view.storage_offset;
         let a_data: &[f64];
         let b_data: &[f64];
-        let storage = if a_view.is_packed() && b_view.is_packed() {
-            a_data = &a_view.storage[a_offset..a_offset + size];
-            b_data = &b_view.storage[b_offset..b_offset + size];
-            a_data
-                .par_iter()
-                .zip(b_data)
-                .map(|(&a_val, &b_val)| f(a_val, b_val))
-                .collect()
-        } else {
-            a_data = &a_view.storage[..];
-            b_data = &b_view.storage[..];
-            let a_shape: &[usize] = &a_view.shape[..];
-            let b_shape: &[usize] = &b_view.shape[..];
-            let a_strides: &[usize] = &a_view.strides[..];
-            let b_strides: &[usize] = &b_view.strides[..];
-            (0..size)
-                .into_par_iter()
-                .map(|p| {
-                    f(
-                        a_data[offset_at(p, a_offset, a_shape, a_strides)],
-                        b_data[offset_at(p, b_offset, b_shape, b_strides)],
-                    )
-                })
-                .collect()
+        let storage = match (a_view.is_packed(), b_view.is_packed()) {
+            (true, true) => {
+                a_data = &a_view.storage[a_offset..a_offset + size];
+                b_data = &b_view.storage[b_offset..b_offset + size];
+                a_data
+                    .par_iter()
+                    .zip(b_data)
+                    .map(|(&a_val, &b_val)| f(a_val, b_val))
+                    .collect()
+            }
+            (true, false) => {
+                a_data = &a_view.storage[a_offset..a_offset + size];
+                b_data = &b_view.storage[..];
+                let b_shape: &[usize] = &b_view.shape[..];
+                let b_strides: &[usize] = &b_view.strides[..];
+                (0..size)
+                    .into_par_iter()
+                    .map(|p| {
+                        f(
+                            a_data[p],
+                            b_data[offset_at(p, b_offset, b_shape, b_strides)],
+                        )
+                    })
+                    .collect()
+            }
+            (false, true) => {
+                b_data = &b_view.storage[b_offset..b_offset + size];
+                a_data = &a_view.storage[..];
+                let a_shape: &[usize] = &a_view.shape[..];
+                let a_strides: &[usize] = &a_view.strides[..];
+                (0..size)
+                    .into_par_iter()
+                    .map(|p| {
+                        f(
+                            a_data[offset_at(p, a_offset, a_shape, a_strides)],
+                            b_data[p],
+                        )
+                    })
+                    .collect()
+            }
+            (false, false) => {
+                a_data = &a_view.storage[..];
+                b_data = &b_view.storage[..];
+                let a_shape: &[usize] = &a_view.shape[..];
+                let b_shape: &[usize] = &b_view.shape[..];
+                let a_strides: &[usize] = &a_view.strides[..];
+                let b_strides: &[usize] = &b_view.strides[..];
+                (0..size)
+                    .into_par_iter()
+                    .map(|p| {
+                        f(
+                            a_data[offset_at(p, a_offset, a_shape, a_strides)],
+                            b_data[offset_at(p, b_offset, b_shape, b_strides)],
+                        )
+                    })
+                    .collect()
+            }
         };
         TensorData::new(storage, out_shape)
     }

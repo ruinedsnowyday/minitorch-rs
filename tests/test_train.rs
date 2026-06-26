@@ -23,32 +23,43 @@ fn test_train_loss_decreases_on_simple() {
     );
 }
 
-// `simple` is linearly separable on x0 (label = 1 iff x0 < 0.5), so the
-// network should comfortably exceed 0.85 accuracy.
+// `simple` is linearly separable on x0 (label = 1 iff x0 < 0.5), so a healthy
+// network comfortably exceeds 0.85 accuracy.
 //
-// Fully reproducible: every randomness source — dataset, weight init, and the
-// per-epoch shuffle — is driven by ONE seeded `StdRng`, so this test is
-// deterministic and cannot flake. We assert over a few fixed seeds (a
-// deterministic robustness check, not one lucky draw); each was verified to
-// reach ~0.98 accuracy well before epoch 100. If a change breaks training,
-// several fail together. (Without seeding, random ReLU init has a ~2% chance of
-// a dead-layer collapse even at 1000 epochs — that nondeterminism is the
-// flakiness this kills.)
+// Fully reproducible: every randomness source — dataset, weight init, per-epoch
+// shuffle — is driven by ONE seeded `StdRng` per trial, so the test is
+// deterministic and cannot flake.
+//
+// We sweep a *batch* of fixed seeds rather than one lucky draw. A single (or
+// three) fixed seeds let a regression that tanks most inits but happens to
+// spare the chosen seeds pass forever; sweeping many seeds restores that
+// breadth. The catch is the known ~2% dead-layer-collapse rate of random ReLU
+// init, so we don't demand that *every* seed converge — we allow up to
+// COLLAPSE_BUDGET of them to miss. That tolerance is wide enough to never flake
+// on an unlucky init, but a real regression breaks far more than two of ten and
+// trips the assert. (A broad, mild degradation that drops everything below 0.85
+// also trips it, since the converged count collapses to ~0.)
 #[test]
 fn test_train_converges_on_simple() {
-    for seed in [0u64, 1, 2] {
-        let mut rng = StdRng::seed_from_u64(seed);
-        let dataset = simple_with(50, &mut rng);
-        let mut net = Network::new_with(2, 4, 1, &mut rng);
+    const SEEDS: u64 = 10;
+    const COLLAPSE_BUDGET: usize = 2;
 
-        let result = train_with(&mut net, &dataset, 200, 0.1, bce, &mut rng);
+    let accs: Vec<f64> = (0..SEEDS)
+        .map(|seed| {
+            let mut rng = StdRng::seed_from_u64(seed);
+            let dataset = simple_with(50, &mut rng);
+            let mut net = Network::new_with(2, 4, 1, &mut rng);
+            let result = train_with(&mut net, &dataset, 200, 0.1, bce, &mut rng);
+            *result.acc_history.last().unwrap()
+        })
+        .collect();
 
-        let final_acc = *result.acc_history.last().unwrap();
-        assert!(
-            final_acc > 0.85,
-            "seed {seed}: expected accuracy > 0.85 after 200 epochs, got {final_acc}"
-        );
-    }
+    let converged = accs.iter().filter(|&&a| a > 0.85).count();
+    assert!(
+        converged >= SEEDS as usize - COLLAPSE_BUDGET,
+        "expected >= {} of {SEEDS} seeds to reach >0.85 accuracy, got {converged}; per-seed: {accs:?}",
+        SEEDS as usize - COLLAPSE_BUDGET
+    );
 }
 
 // TrainingResult vec lengths must equal `epochs`. Trivial check, catches

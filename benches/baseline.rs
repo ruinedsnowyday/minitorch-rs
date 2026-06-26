@@ -1,5 +1,5 @@
-//! Module 3 — compare `SimpleOps` (naive) vs `FastOps` (contiguous fast path)
-//! on the same ops, side by side, BEFORE adding Rayon/SIMD.
+//! Module 3 — compare `SimpleOps` (naive) vs `FastOps` (Rayon-parallel today,
+//! SIMD pending) on the same ops, side by side.
 //!
 //! Run with `cargo bench` (criterion auto-uses the optimized `bench` profile —
 //! never benchmark a debug build, it's 10–100x slower and meaningless).
@@ -124,5 +124,61 @@ fn bench_reduce(c: &mut Criterion) {
     group.finish();
 }
 
-criterion_group!(benches, bench_matmul, bench_map, bench_zip, bench_reduce);
+// zip with broadcasting: a packed [n,n] matrix + a [n] row — the canonical
+// `activations + bias` shape. Unlike `bench_zip` (both operands packed → fast
+// slice path), one operand here is broadcast/strided, the common NN case the
+// fast/slow split handles least well. Tracking it separately makes the cost of
+// the broadcast path — and any optimization of it — visible.
+fn bench_zip_broadcast(c: &mut Criterion) {
+    let mut group = c.benchmark_group("zip_broadcast");
+    group.sample_size(ELEM_SAMPLES);
+    group.warm_up_time(ELEM_WARMUP);
+    group.measurement_time(ELEM_MEASURE);
+    for n in [512usize, 1024, 2048] {
+        let a = random(vec![n, n]);
+        let row = random(vec![n]);
+        group.throughput(Throughput::Elements((n * n) as u64));
+        group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
+            bch.iter(|| SimpleOps::zip(black_box(&a), black_box(&row), |x, y| x + y));
+        });
+        group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
+            bch.iter(|| FastOps::zip(black_box(&a), black_box(&row), |x, y| x + y));
+        });
+    }
+    group.finish();
+}
+
+// reduce along the LAST (unit-stride) axis — the cache-friendly counterpart to
+// `bench_reduce`, which reduces axis 0 (stride n: one cache line per read). Same
+// total work; the gap between the two groups isolates memory-access cost from
+// arithmetic. This is also the access pattern a vectorized reduce can actually
+// accelerate, so it's the honest baseline for the upcoming SIMD work.
+fn bench_reduce_contiguous(c: &mut Criterion) {
+    let mut group = c.benchmark_group("reduce_contig_axis");
+    group.sample_size(ELEM_SAMPLES);
+    group.warm_up_time(ELEM_WARMUP);
+    group.measurement_time(ELEM_MEASURE);
+    for n in [512usize, 1024, 2048] {
+        let a = random(vec![n, n]);
+        let last = 1usize; // [n, n] → last axis index
+        group.throughput(Throughput::Elements((n * n) as u64));
+        group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
+            bch.iter(|| SimpleOps::reduce(black_box(&a), |x, y| x + y, 0.0, last, false));
+        });
+        group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
+            bch.iter(|| FastOps::reduce(black_box(&a), |x, y| x + y, 0.0, last, false));
+        });
+    }
+    group.finish();
+}
+
+criterion_group!(
+    benches,
+    bench_matmul,
+    bench_map,
+    bench_zip,
+    bench_zip_broadcast,
+    bench_reduce,
+    bench_reduce_contiguous
+);
 criterion_main!(benches);

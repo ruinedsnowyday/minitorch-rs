@@ -275,6 +275,39 @@ proptest! {
     }
 }
 
+proptest! {
+    // One operand non-packed (transposed) zipped against a contiguous one of
+    // the same shape, both orderings. The existing zip proptests only feed
+    // both-contiguous operands or a clean row-broadcast; this is the case the
+    // upcoming "index the packed side linearly, offset_at only the strided
+    // side" zip optimization must keep correct — a regression there shows here.
+    #[test]
+    fn prop_zip_mixed_layout(rows in 1usize..=5, cols in 1usize..=5) {
+        // contiguous [rows, cols]
+        let a = TensorData::new(
+            (0..rows * cols).map(|i| i as f64).collect(),
+            vec![rows, cols],
+        );
+        // also [rows, cols], but strided: built [cols, rows] then transposed,
+        // so its strides are [1, rows] — not packed (except degenerate 1-dims).
+        let b = TensorData::new(
+            (0..rows * cols).map(|i| (i as f64) * 1.5 + 1.0).collect(),
+            vec![cols, rows],
+        )
+        .permute(&[1, 0]);
+        let f = |x: f64, y: f64| x * 2.0 - y;
+
+        let fast = FastOps::zip(&a, &b, f);
+        let simple = SimpleOps::zip(&a, &b, f);
+        prop_assert_eq!(&fast.shape, &simple.shape);
+        prop_assert_eq!(&*fast.storage, &*simple.storage);
+
+        let fast_sw = FastOps::zip(&b, &a, f);
+        let simple_sw = SimpleOps::zip(&b, &a, f);
+        prop_assert_eq!(&*fast_sw.storage, &*simple_sw.storage);
+    }
+}
+
 // ===================================================================
 // reduce — cross-backend equivalence
 // ===================================================================
@@ -382,6 +415,75 @@ proptest! {
         for dim in 0..shape.len() {
             let fast = FastOps::reduce(&t, f, 0.0, dim, keep);
             let simple = SimpleOps::reduce(&t, f, 0.0, dim, keep);
+            prop_assert_eq!(&fast.shape, &simple.shape);
+            prop_assert_eq!(&*fast.storage, &*simple.storage);
+        }
+    }
+}
+
+// --- reducing over a broadcast (stride-0) view ---
+//
+// The one reduce-input layout the tests above never build, and exactly what the
+// autodiff backward path constructs (gradients reduced over broadcast-expanded
+// dims). With a stride-0 axis, `data[base + k*stride]` reads the SAME element
+// dim_size times; a silent bug here surfaces as wrong gradients, not a crash.
+
+// Reduce ALONG the broadcast axis: row [1,2,3] expanded to [4,3], summed down
+// the expanded dim → every element counted 4×.
+#[test]
+fn test_reduce_along_broadcast_axis_hand_computed() {
+    let view = TensorData::new(vec![1., 2., 3.], vec![3]).broadcast_to(&[4, 3]);
+    let out = FastOps::reduce(&view, |a, x| a + x, 0.0, 0, false);
+    assert_eq!(out.shape, vec![3]);
+    assert_eq!(&*out.storage, &vec![4., 8., 12.]);
+}
+
+// Reduce a REAL axis of a broadcast view: the stride-0 lands in a *kept* dim
+// (skipped_strides), so every output fiber starts at the same base. row [1,2,3]
+// → [4,3], summed across each row → 1+2+3 = 6, four identical rows.
+#[test]
+fn test_reduce_real_axis_of_broadcast_view_hand_computed() {
+    let view = TensorData::new(vec![1., 2., 3.], vec![3]).broadcast_to(&[4, 3]);
+    let out = FastOps::reduce(&view, |a, x| a + x, 0.0, 1, false);
+    assert_eq!(out.shape, vec![4]);
+    assert_eq!(&*out.storage, &vec![6., 6., 6., 6.]);
+}
+
+// Same two layouts, oracle-checked with the order-sensitive fold and both
+// keep_dims settings, plus a column broadcast for the other stride-0 position.
+#[test]
+fn test_reduce_broadcast_view_matches_oracle() {
+    let row = TensorData::new(vec![2., 5., 7.], vec![3]).broadcast_to(&[4, 3]);
+    let col = TensorData::new(vec![3., 6.], vec![2, 1]).broadcast_to(&[2, 5]);
+    for t in [&row, &col] {
+        for dim in 0..2 {
+            for keep in [false, true] {
+                assert_reduce_matches_oracle(t, dim, keep);
+            }
+        }
+    }
+}
+
+proptest! {
+    // Broadcast a size-1 axis up, then reduce along every axis — sweeps both
+    // "reduce the broadcast axis" and "reduce a real axis of a broadcast view"
+    // (the stride-0 reduce path) across many shapes.
+    #[test]
+    fn prop_reduce_broadcast_view(
+        base in 1usize..=5,
+        expand in 2usize..=5,
+        keep in any::<bool>(),
+    ) {
+        // [1, base] broadcast to [expand, base]: dim 0 is stride-0.
+        let view = TensorData::new(
+            (0..base).map(|i| (i as f64) + 0.5).collect(),
+            vec![1, base],
+        )
+        .broadcast_to(&[expand, base]);
+        let f = |acc: f64, x: f64| acc * 2.0 + x;
+        for dim in 0..2 {
+            let fast = FastOps::reduce(&view, f, 0.0, dim, keep);
+            let simple = SimpleOps::reduce(&view, f, 0.0, dim, keep);
             prop_assert_eq!(&fast.shape, &simple.shape);
             prop_assert_eq!(&*fast.storage, &*simple.storage);
         }
