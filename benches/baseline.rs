@@ -25,6 +25,7 @@ use criterion::{
     BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
 };
 use rand::Rng;
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
 
 use minitorch_rs::fast_ops::FastOps;
 use minitorch_rs::operators;
@@ -223,6 +224,44 @@ fn bench_reduce_contiguous(c: &mut Criterion) {
     group.finish();
 }
 
+// Diagnostic floor: how much of the map/zip time is just *producing the output
+// buffer* — allocate + first-touch page-fault + one write pass — with NO input
+// read and NO real compute? Compare these to fast_scalar / fast_simd above: if
+// the ops land near this floor, buffer production is the wall and SIMD (which
+// only speeds compute) cannot move them.
+//
+// Two variants on purpose:
+//   `seq` — `vec![1.0; size]`: one thread faults every page. We fill a NON-zero
+//           value because `vec![0.0; n]` can lower to calloc and skip the very
+//           faulting we want to measure.
+//   `par` — parallel collect, faulting across threads exactly like the ops do.
+//           On a many-core box parallel first-touch can serialize on the kernel's
+//           per-mm lock, so `par` is the fair comparison and `seq` vs `par`
+//           exposes that contention directly.
+// (Both reuse the freed block across iterations, same as the op benches, so the
+// allocator is "warm" in all of them — the ratio stays apples-to-apples.)
+fn bench_alloc_floor(c: &mut Criterion) {
+    let mut group = c.benchmark_group("alloc_floor");
+    group.sample_size(ELEM_SAMPLES);
+    group.warm_up_time(ELEM_WARMUP);
+    group.measurement_time(ELEM_MEASURE);
+    for n in [512usize, 1024, 2048] {
+        let size = n * n;
+        group.throughput(Throughput::Elements(size as u64));
+        group.bench_with_input(BenchmarkId::new("seq", n), &n, |bch, _| {
+            bch.iter(|| black_box(vec![black_box(1.0f64); size]));
+        });
+        group.bench_with_input(BenchmarkId::new("par", n), &n, |bch, _| {
+            bch.iter(|| {
+                let v: Vec<f64> =
+                    (0..size).into_par_iter().map(|_| black_box(1.0f64)).collect();
+                black_box(v)
+            });
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_matmul,
@@ -231,6 +270,7 @@ criterion_group!(
     bench_zip,
     bench_zip_broadcast,
     bench_reduce,
-    bench_reduce_contiguous
+    bench_reduce_contiguous,
+    bench_alloc_floor
 );
 criterion_main!(benches);

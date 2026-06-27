@@ -1,7 +1,5 @@
 use std::rc::Rc;
 
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
-
 use crate::tensor_ops::broadcast_strides;
 
 #[derive(Clone)]
