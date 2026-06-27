@@ -1,12 +1,15 @@
-//! Module 3 — compare `SimpleOps` (naive) vs `FastOps` (Rayon-parallel today,
-//! SIMD pending) on the same ops, side by side.
+//! Module 3/7 — compare three tiers on the same op, side by side:
+//!   `simple`      — SimpleOps, naive single-thread (index-based).
+//!   `fast_scalar` — FastOps, Rayon-parallel but a scalar closure per element.
+//!   `fast_simd`   — FastOps, Rayon + std::simd via map_op / zip_op.
+//! The simple→fast_scalar gap is the parallelism win; fast_scalar→fast_simd is
+//! the vectorization win in isolation.
 //!
 //! Run with `cargo bench` (criterion auto-uses the optimized `bench` profile —
 //! never benchmark a debug build, it's 10–100x slower and meaningless).
-//! Each group registers both backends as `simple/<n>` and `fast/<n>`, so one
-//! run plots them together. Numbers land in `target/criterion/`, HTML report at
+//! Numbers land in `target/criterion/`, HTML report at
 //! `target/criterion/report/index.html`. Criterion also saves each run, so a
-//! later optimization (Rayon, SIMD) prints its % change against this one.
+//! later optimization prints its % change against this one.
 //!
 //! Run length is governed by the knobs below — bump them for longer runs and
 //! tighter confidence intervals. They're set per group (matmul vs elementwise)
@@ -24,6 +27,8 @@ use criterion::{
 use rand::Rng;
 
 use minitorch_rs::fast_ops::FastOps;
+use minitorch_rs::operators;
+use minitorch_rs::simd_ops::{LANES, SimdAdd, SimdExp, SimdReLU};
 use minitorch_rs::tensor_data::TensorData;
 use minitorch_rs::tensor_ops::{SimpleOps, TensorOps};
 
@@ -69,10 +74,16 @@ fn bench_matmul(c: &mut Criterion) {
     group.finish();
 }
 
-// map / zip / reduce: bandwidth-bound. Throughput = element count, so the
-// reported elem/s is the memory-throughput story.
-fn bench_map(c: &mut Criterion) {
-    let mut group = c.benchmark_group("map");
+// Elementwise map across the three tiers. We bench TWO ops on purpose, because
+// the SIMD payoff hinges on the compute:memory ratio:
+//   - relu (cheap, one max): bandwidth-bound. The arithmetic was never the
+//     bottleneck, so SIMD has little to win — the honest "SIMD can't rescue a
+//     memory-bound op" baseline. Watch fast_scalar≈fast_simd here.
+//   - exp (expensive, a transcendental): compute-bound per element, so a
+//     vectorized exp is where SIMD should actually pull ahead.
+// Throughput = element count, so reported elem/s reads as memory throughput.
+fn bench_map_relu(c: &mut Criterion) {
+    let mut group = c.benchmark_group("map_relu");
     group.sample_size(ELEM_SAMPLES);
     group.warm_up_time(ELEM_WARMUP);
     group.measurement_time(ELEM_MEASURE);
@@ -80,15 +91,41 @@ fn bench_map(c: &mut Criterion) {
         let a = random(vec![n, n]);
         group.throughput(Throughput::Elements((n * n) as u64));
         group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
-            bch.iter(|| SimpleOps::map(black_box(&a), |x| x * 2.0));
+            bch.iter(|| SimpleOps::map(black_box(&a), operators::relu));
         });
-        group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
-            bch.iter(|| FastOps::map(black_box(&a), |x| x * 2.0));
+        group.bench_with_input(BenchmarkId::new("fast_scalar", n), &n, |bch, _| {
+            bch.iter(|| FastOps::map(black_box(&a), operators::relu));
+        });
+        group.bench_with_input(BenchmarkId::new("fast_simd", n), &n, |bch, _| {
+            bch.iter(|| FastOps::map_op::<SimdReLU, LANES>(black_box(&a)));
         });
     }
     group.finish();
 }
 
+fn bench_map_exp(c: &mut Criterion) {
+    let mut group = c.benchmark_group("map_exp");
+    group.sample_size(ELEM_SAMPLES);
+    group.warm_up_time(ELEM_WARMUP);
+    group.measurement_time(ELEM_MEASURE);
+    for n in [512usize, 1024, 2048] {
+        let a = random(vec![n, n]);
+        group.throughput(Throughput::Elements((n * n) as u64));
+        group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
+            bch.iter(|| SimpleOps::map(black_box(&a), operators::exp));
+        });
+        group.bench_with_input(BenchmarkId::new("fast_scalar", n), &n, |bch, _| {
+            bch.iter(|| FastOps::map(black_box(&a), operators::exp));
+        });
+        group.bench_with_input(BenchmarkId::new("fast_simd", n), &n, |bch, _| {
+            bch.iter(|| FastOps::map_op::<SimdExp, LANES>(black_box(&a)));
+        });
+    }
+    group.finish();
+}
+
+// zip: both operands packed → the fast slice path. Three tiers, add as the op
+// (cheap, so this is the bandwidth-bound counterpart to map_relu).
 fn bench_zip(c: &mut Criterion) {
     let mut group = c.benchmark_group("zip");
     group.sample_size(ELEM_SAMPLES);
@@ -99,30 +136,15 @@ fn bench_zip(c: &mut Criterion) {
         let b = random(vec![n, n]);
         group.throughput(Throughput::Elements((n * n) as u64));
         group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
-            bch.iter(|| SimpleOps::zip(black_box(&a), black_box(&b), |x, y| x + y));
+            bch.iter(|| SimpleOps::zip(black_box(&a), black_box(&b), operators::add));
         });
-        group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
-            bch.iter(|| FastOps::zip(black_box(&a), black_box(&b), |x, y| x + y));
+        group.bench_with_input(BenchmarkId::new("fast_scalar", n), &n, |bch, _| {
+            bch.iter(|| FastOps::zip(black_box(&a), black_box(&b), operators::add));
         });
-    }
-    group.finish();
-}
-
-fn bench_reduce(c: &mut Criterion) {
-    let mut group = c.benchmark_group("reduce");
-    group.sample_size(ELEM_SAMPLES);
-    group.warm_up_time(ELEM_WARMUP);
-    group.measurement_time(ELEM_MEASURE);
-    for n in [512usize, 1024, 2048] {
-        let a = random(vec![n, n]);
-        group.throughput(Throughput::Elements((n * n) as u64));
-        group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
+        group.bench_with_input(BenchmarkId::new("fast_simd", n), &n, |bch, _| {
             bch.iter(|| {
-                SimpleOps::reduce(black_box(&a), |x, y| x + y, 0.0, 0, false)
+                FastOps::zip_op::<SimdAdd, LANES>(black_box(&a), black_box(&b))
             });
-        });
-        group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
-            bch.iter(|| FastOps::reduce(black_box(&a), |x, y| x + y, 0.0, 0, false));
         });
     }
     group.finish();
@@ -147,6 +169,27 @@ fn bench_zip_broadcast(c: &mut Criterion) {
         });
         group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
             bch.iter(|| FastOps::zip(black_box(&a), black_box(&row), |x, y| x + y));
+        });
+    }
+    group.finish();
+}
+
+// reduce along axis 0 (stride n: one cache line per read).
+fn bench_reduce(c: &mut Criterion) {
+    let mut group = c.benchmark_group("reduce");
+    group.sample_size(ELEM_SAMPLES);
+    group.warm_up_time(ELEM_WARMUP);
+    group.measurement_time(ELEM_MEASURE);
+    for n in [512usize, 1024, 2048] {
+        let a = random(vec![n, n]);
+        group.throughput(Throughput::Elements((n * n) as u64));
+        group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
+            bch.iter(|| {
+                SimpleOps::reduce(black_box(&a), |x, y| x + y, 0.0, 0, false)
+            });
+        });
+        group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
+            bch.iter(|| FastOps::reduce(black_box(&a), |x, y| x + y, 0.0, 0, false));
         });
     }
     group.finish();
@@ -183,7 +226,8 @@ fn bench_reduce_contiguous(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_matmul,
-    bench_map,
+    bench_map_relu,
+    bench_map_exp,
     bench_zip,
     bench_zip_broadcast,
     bench_reduce,
