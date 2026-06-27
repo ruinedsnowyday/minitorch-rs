@@ -1,5 +1,7 @@
 use std::rc::Rc;
 
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+
 use crate::tensor_ops::broadcast_strides;
 
 #[derive(Clone)]
@@ -133,8 +135,12 @@ impl TensorData {
         if self.is_contiguous() {
             return self.clone();
         }
-        let contiguous_storage =
-            self.iter_indices().map(|idx| self.get(&idx)).collect();
+        let size = self.size();
+        let contiguous_storage = (0..size)
+            .into_iter()
+            .map(|idx| self.storage[self.offset_at(idx)])
+            .collect();
+
         Self::new(contiguous_storage, self.shape.clone())
     }
 
