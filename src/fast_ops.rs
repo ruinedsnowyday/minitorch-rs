@@ -27,16 +27,41 @@ impl TensorOps for FastOps {
         let storage = if input.is_packed() {
             let simd_slice = &input.storage[offset..offset + body];
             let tail_slice = &input.storage[offset + body..offset + size];
-            let mut out: Vec<f64> = vec![0.; size];
-            out.par_chunks_exact_mut(N)
+
+            let mut out: Vec<f64> = Vec::with_capacity(size);
+            out.spare_capacity_mut()
+                .par_chunks_exact_mut(N)
                 .zip(simd_slice.par_chunks_exact(N))
                 .for_each(|(dst, src)| {
-                    Op::simd(Simd::<f64, N>::from_slice(src)).copy_to_slice(dst);
+                    dst.write_copy_of_slice(
+                        &Op::simd(Simd::<f64, N>::from_slice(src)).to_array(),
+                    );
                 });
-            out[body..]
+            // SAFETY: write into uninitialized memory. safe, since
+            // 1. simd_slice has size of (size / N) * N (size / N chunks of size N)
+            // and par_chunks_exact_mut(N) over spare capacity gives size / N chunks
+            // of size N as well.
+            // 2. f64 is not a niche type: any combination of 64 bits yields a valid
+            //    f64 and we never read slots before writing to them
+            unsafe {
+                out.set_len(body);
+            }
+            out.spare_capacity_mut()
                 .iter_mut()
                 .zip(tail_slice)
-                .for_each(|(dst, &src)| *dst = Op::scalar(src));
+                .for_each(|(dst, &src)| {
+                    dst.write(Op::scalar(src));
+                });
+            // SAFETY: write into uninitialized memory. safe, since
+            // 1. Similarly, tail slice has size % N elements and spare capacity has
+            //    size - (size / N) * N = size % N elements disjoint from the written
+            //    ones. Thus, no uninitialized but safely accessible memory is left
+            //    in the out vector after two writes and two changes of length
+            // 2. f64 is not a niche type: any combination of 64 bits yields a valid
+            //    f64 and we never read slots before writing to them
+            unsafe {
+                out.set_len(size);
+            };
             out
         } else {
             let data: &[f64] = &input.storage[..];
@@ -71,22 +96,46 @@ impl TensorOps for FastOps {
                 b_data = &b_view.storage[b_offset..b_offset + size];
                 let (a_body, a_tail) = a_data.split_at(body);
                 let (b_body, b_tail) = b_data.split_at(body);
-                let mut out = vec![0.; size];
-                out.par_chunks_exact_mut(N)
+                let mut out: Vec<f64> = Vec::with_capacity(size);
+                out.spare_capacity_mut()
+                    .par_chunks_exact_mut(N)
                     .zip(a_body.par_chunks_exact(N).zip(b_body.par_chunks_exact(N)))
                     .for_each(|(dst, (a_src, b_src))| {
-                        Op::simd(
-                            Simd::<f64, N>::from_slice(a_src),
-                            Simd::<f64, N>::from_slice(b_src),
-                        )
-                        .copy_to_slice(dst)
+                        dst.write_copy_of_slice(
+                            &Op::simd(
+                                Simd::<f64, N>::from_slice(a_src),
+                                Simd::<f64, N>::from_slice(b_src),
+                            )
+                            .to_array(),
+                        );
                     });
-                out[body..]
+                // SAFETY: write into uninitialized memory. safe, since
+                // 1. both a_body and b_body have size of (size / N) * N (size
+                //    / N chunks of size N) and par_chunks_exact_mut(N) over spare
+                //    capacity gives at least size / N chunks of size N (since
+                //    allocation can give more capacity than asked for)
+                // 2. f64 is not a niche type: any combination of 64 bits yields
+                //    a valid f64 and we never read slots before writing to them
+                unsafe {
+                    out.set_len(body);
+                }
+                out.spare_capacity_mut()
                     .iter_mut()
-                    .zip(a_tail.iter().zip(b_tail.iter()))
+                    .zip(a_tail.iter().zip(b_tail))
                     .for_each(|(dst, (&a_src, &b_src))| {
-                        *dst = Op::scalar(a_src, b_src)
+                        dst.write(Op::scalar(a_src, b_src));
                     });
+                // SAFETY: write into uninitialized memory. safe, since
+                // 1. Similarly, tail slices have size % N elements and spare capacity
+                //    has at least  size - (size / N) * N = size % N elements disjoint
+                //    from the written ones. Thus, no uninitialized but safely
+                //    accessible memory is left in the out vector after two writes and
+                //    two changes of length
+                // 2. f64 is not a niche type: any combination of 64 bits yields
+                //    a valid f64 and we never read slots before writing to them
+                unsafe {
+                    out.set_len(size);
+                };
                 TensorData::new(out, out_shape)
             }
             _ => FastOps::zip(a, b, Op::scalar),
