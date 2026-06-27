@@ -38,6 +38,18 @@ pub trait TensorOps {
         Self::zip(a, b, Op::scalar)
     }
 
+    /// Apply a statically-dispatched unary operation on every element of the tensor
+    /// and store the resulting data in a buffer
+    fn map_op_into<Op: UnaryOp, const N: usize>(input: &TensorData, out: &mut [f64]);
+
+    /// Apply a statically-dispatched binary operation on every pair of elements of
+    /// two tensor and store the resulting data in a buffer
+    fn zip_op_into<Op: BinaryOp, const N: usize>(
+        a: &TensorData,
+        b: &TensorData,
+        out: &mut [f64],
+    );
+
     fn matmul(a: &TensorData, b: &TensorData) -> TensorData;
 }
 
@@ -174,6 +186,29 @@ impl TensorOps for SimpleOps {
             out_storage.extend_from_slice(&mat.storage);
         }
         TensorData::new(out_storage, out_shape)
+    }
+
+    fn map_op_into<Op: UnaryOp, const N: usize>(input: &TensorData, out: &mut [f64]) {
+        assert!(input.size() <= out.len());
+        out.iter_mut()
+            .zip(input.iter_indices())
+            .for_each(|(out, idx)| *out = Op::scalar(input.get(&idx)));
+    }
+
+    fn zip_op_into<Op: BinaryOp, const N: usize>(
+        a: &TensorData,
+        b: &TensorData,
+        out: &mut [f64],
+    ) {
+        let out_shape = broadcast_shape(&a.shape, &b.shape);
+        let a_view = a.broadcast_to(&out_shape);
+        assert!(a_view.size() <= out.len());
+        let b_view = b.broadcast_to(&out_shape);
+        out.iter_mut()
+            .zip(iter_indices_of_shape(&out_shape))
+            .for_each(|(out, idx)| {
+                *out = Op::scalar(a_view.get(&idx), b_view.get(&idx))
+            });
     }
 }
 

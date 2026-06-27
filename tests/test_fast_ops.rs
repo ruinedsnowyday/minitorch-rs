@@ -902,6 +902,62 @@ proptest! {
 }
 
 // ===================================================================
+// zip_op_into — direct buffer-writing variant, broadcast arms
+//
+// The allocating `zip_op` now delegates to `zip_op_into`, so the proptests above
+// drive it indirectly — but only at exactly-sized buffers. This drives
+// `zip_op_into` DIRECTLY on broadcast operands and into an OVERSIZED buffer,
+// pinning two things the wrapper can't:
+//   (1) the strided arms (true,false)/(false,true)/(false,false), which a packed
+//       input never reaches (packed → (true,true)); these are the arms that used
+//       to self-recurse before they were spelled out — a regression there would
+//       blow the stack here instead of returning.
+//   (2) the `size <= out.len()` contract: only [0,size) may be written; the slop
+//       past `size` must stay untouched.
+// NaN-poison the whole buffer: [0,size) must match the oracle (so no NaN may
+// survive there — catches an under-write) and [size,..) must stay NaN (catches
+// an over-write).
+// ===================================================================
+fn assert_zip_op_into_matches_oracle<const N: usize>(a: &TensorData, b: &TensorData) {
+    let oracle = SimpleOps::zip(a, b, axmy);
+    let size = oracle.storage.len();
+    let slop = 3; // < N, so the packed path's chunk_exact math is exercised too
+    let mut out = vec![f64::NAN; size + slop];
+    FastOps::zip_op_into::<AxmyOp, N>(a, b, &mut out);
+    assert_eq!(
+        &out[..size],
+        &oracle.storage[..],
+        "zip_op_into body mismatch: a(shape={:?} strides={:?}) b(shape={:?} strides={:?})",
+        a.shape, a.strides, b.shape, b.strides
+    );
+    assert!(
+        out[size..].iter().all(|x| x.is_nan()),
+        "zip_op_into wrote past size={size} into the {slop}-element slop"
+    );
+}
+
+#[test]
+fn test_zip_op_into_broadcast_arms() {
+    // (true,false) and (false,true): matrix [4,3] + row [3], both orderings.
+    let mat = TensorData::new(signed_seq(12), vec![4, 3]);
+    let row = TensorData::new(vec![1., -2., 3.], vec![3]);
+    assert_zip_op_into_matches_oracle::<4>(&mat, &row);
+    assert_zip_op_into_matches_oracle::<4>(&row, &mat);
+
+    // (false,false): column [4,1] + row [1,3] → both views broadcast to [4,3],
+    // neither packed.
+    let col = TensorData::new(vec![1., 2., 3., 4.], vec![4, 1]);
+    let row2 = TensorData::new(vec![10., 20., 30.], vec![1, 3]);
+    assert_zip_op_into_matches_oracle::<4>(&col, &row2);
+
+    // (true,true): both packed → the SIMD fast path, into the oversized buffer —
+    // exercises the slop/contract on the chunk path itself.
+    let p = TensorData::new(signed_seq(12), vec![4, 3]);
+    let q = TensorData::new((0..12).map(|i| i as f64 * 0.5).collect(), vec![4, 3]);
+    assert_zip_op_into_matches_oracle::<4>(&p, &q);
+}
+
+// ===================================================================
 // All ops × scalar oracle — correctness coverage for every Simd* op
 //
 // Every Op::scalar delegates to the trusted operators::X, so for ANY op the

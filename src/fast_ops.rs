@@ -3,7 +3,7 @@ use std::simd::Simd;
 use rayon::{
     iter::{
         IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
-        ParallelIterator,
+        IntoParallelRefMutIterator, ParallelIterator,
     },
     slice::{ParallelSlice, ParallelSliceMut},
 };
@@ -20,60 +20,9 @@ pub struct FastOps;
 
 impl TensorOps for FastOps {
     fn map_op<Op: UnaryOp, const N: usize>(input: &TensorData) -> TensorData {
-        let offset = input.storage_offset;
-        let size = input.size();
-        let tail = size % N;
-        let body = size - tail;
-        let storage = if input.is_packed() {
-            let simd_slice = &input.storage[offset..offset + body];
-            let tail_slice = &input.storage[offset + body..offset + size];
-
-            let mut out: Vec<f64> = Vec::with_capacity(size);
-            out.spare_capacity_mut()
-                .par_chunks_exact_mut(N)
-                .zip(simd_slice.par_chunks_exact(N))
-                .for_each(|(dst, src)| {
-                    dst.write_copy_of_slice(
-                        &Op::simd(Simd::<f64, N>::from_slice(src)).to_array(),
-                    );
-                });
-            // SAFETY: write into uninitialized memory. safe, since
-            // 1. simd_slice has size of (size / N) * N (size / N chunks of size N)
-            // and par_chunks_exact_mut(N) over spare capacity gives size / N chunks
-            // of size N as well.
-            // 2. f64 is not a niche type: any combination of 64 bits yields a valid
-            //    f64 and we never read slots before writing to them
-            unsafe {
-                out.set_len(body);
-            }
-            out.spare_capacity_mut()
-                .iter_mut()
-                .zip(tail_slice)
-                .for_each(|(dst, &src)| {
-                    dst.write(Op::scalar(src));
-                });
-            // SAFETY: write into uninitialized memory. safe, since
-            // 1. Similarly, tail slice has size % N elements and spare capacity has
-            //    size - (size / N) * N = size % N elements disjoint from the written
-            //    ones. Thus, no uninitialized but safely accessible memory is left
-            //    in the out vector after two writes and two changes of length
-            // 2. f64 is not a niche type: any combination of 64 bits yields a valid
-            //    f64 and we never read slots before writing to them
-            unsafe {
-                out.set_len(size);
-            };
-            out
-        } else {
-            let data: &[f64] = &input.storage[..];
-            let offset = input.storage_offset;
-            let shape: &[usize] = &input.shape[..];
-            let strides: &[usize] = &input.strides[..];
-            (0..size)
-                .into_par_iter()
-                .map(|idx| Op::scalar(data[offset_at(idx, offset, shape, strides)]))
-                .collect()
-        };
-        TensorData::new(storage, input.shape.clone())
+        let mut out = vec![0.; input.size()];
+        Self::map_op_into::<Op, N>(input, &mut out);
+        TensorData::new(out, input.shape.clone())
     }
 
     fn zip_op<Op: BinaryOp, const N: usize>(
@@ -83,63 +32,9 @@ impl TensorOps for FastOps {
         let out_shape = broadcast_shape(&a.shape, &b.shape);
         let a_view = a.broadcast_to(&out_shape);
         let size = a_view.size();
-        let a_offset = a_view.storage_offset;
-        let b_view = b.broadcast_to(&out_shape);
-        let b_offset = b_view.storage_offset;
-        let a_data: &[f64];
-        let b_data: &[f64];
-        let tail = size % N;
-        let body = size - tail;
-        match (a_view.is_packed(), b_view.is_packed()) {
-            (true, true) => {
-                a_data = &a_view.storage[a_offset..a_offset + size];
-                b_data = &b_view.storage[b_offset..b_offset + size];
-                let (a_body, a_tail) = a_data.split_at(body);
-                let (b_body, b_tail) = b_data.split_at(body);
-                let mut out: Vec<f64> = Vec::with_capacity(size);
-                out.spare_capacity_mut()
-                    .par_chunks_exact_mut(N)
-                    .zip(a_body.par_chunks_exact(N).zip(b_body.par_chunks_exact(N)))
-                    .for_each(|(dst, (a_src, b_src))| {
-                        dst.write_copy_of_slice(
-                            &Op::simd(
-                                Simd::<f64, N>::from_slice(a_src),
-                                Simd::<f64, N>::from_slice(b_src),
-                            )
-                            .to_array(),
-                        );
-                    });
-                // SAFETY: write into uninitialized memory. safe, since
-                // 1. both a_body and b_body have size of (size / N) * N (size
-                //    / N chunks of size N) and par_chunks_exact_mut(N) over spare
-                //    capacity gives at least size / N chunks of size N (since
-                //    allocation can give more capacity than asked for)
-                // 2. f64 is not a niche type: any combination of 64 bits yields
-                //    a valid f64 and we never read slots before writing to them
-                unsafe {
-                    out.set_len(body);
-                }
-                out.spare_capacity_mut()
-                    .iter_mut()
-                    .zip(a_tail.iter().zip(b_tail))
-                    .for_each(|(dst, (&a_src, &b_src))| {
-                        dst.write(Op::scalar(a_src, b_src));
-                    });
-                // SAFETY: write into uninitialized memory. safe, since
-                // 1. Similarly, tail slices have size % N elements and spare capacity
-                //    has at least  size - (size / N) * N = size % N elements disjoint
-                //    from the written ones. Thus, no uninitialized but safely
-                //    accessible memory is left in the out vector after two writes and
-                //    two changes of length
-                // 2. f64 is not a niche type: any combination of 64 bits yields
-                //    a valid f64 and we never read slots before writing to them
-                unsafe {
-                    out.set_len(size);
-                };
-                TensorData::new(out, out_shape)
-            }
-            _ => FastOps::zip(a, b, Op::scalar),
-        }
+        let mut out = vec![0.; size];
+        Self::zip_op_into::<Op, N>(a, b, &mut out);
+        TensorData::new(out, out_shape)
     }
 
     fn map(input: &TensorData, f: impl Fn(f64) -> f64 + Send + Sync) -> TensorData {
@@ -284,6 +179,125 @@ impl TensorOps for FastOps {
 
     fn matmul(a: &TensorData, b: &TensorData) -> TensorData {
         batched_matmul(a, b)
+    }
+
+    fn map_op_into<Op: UnaryOp, const N: usize>(input: &TensorData, out: &mut [f64]) {
+        assert!(input.size() <= out.len());
+        let offset = input.storage_offset;
+        let size = input.size();
+        let tail = size % N;
+        let body = size - tail;
+        if input.is_packed() {
+            let simd_slice = &input.storage[offset..offset + body];
+            let tail_slice = &input.storage[offset + body..offset + size];
+
+            out.par_chunks_exact_mut(N)
+                .zip(simd_slice.par_chunks_exact(N))
+                .for_each(|(dst, src)| {
+                    Op::simd(Simd::<f64, N>::from_slice(src)).copy_to_slice(dst);
+                });
+            out[body..]
+                .iter_mut()
+                .zip(tail_slice)
+                .for_each(|(dst, &src)| {
+                    *dst = Op::scalar(src);
+                });
+        } else {
+            let data: &[f64] = &input.storage[..];
+            let offset = input.storage_offset;
+            let shape: &[usize] = &input.shape[..];
+            let strides: &[usize] = &input.strides[..];
+            out.par_iter_mut().zip((0..size).into_par_iter()).for_each(
+                |(dst, idx)| {
+                    *dst = Op::scalar(data[offset_at(idx, offset, shape, strides)])
+                },
+            );
+        };
+    }
+
+    fn zip_op_into<Op: BinaryOp, const N: usize>(
+        a: &TensorData,
+        b: &TensorData,
+        out: &mut [f64],
+    ) {
+        let out_shape = broadcast_shape(&a.shape, &b.shape);
+        let a_view = a.broadcast_to(&out_shape);
+        let size = a_view.size();
+        assert!(size <= out.len());
+        let a_offset = a_view.storage_offset;
+        let b_view = b.broadcast_to(&out_shape);
+        let b_offset = b_view.storage_offset;
+        let a_data: &[f64];
+        let b_data: &[f64];
+        let tail = size % N;
+        let body = size - tail;
+        match (a_view.is_packed(), b_view.is_packed()) {
+            (true, true) => {
+                a_data = &a_view.storage[a_offset..a_offset + size];
+                b_data = &b_view.storage[b_offset..b_offset + size];
+                let (a_body, a_tail) = a_data.split_at(body);
+                let (b_body, b_tail) = b_data.split_at(body);
+                out.par_chunks_exact_mut(N)
+                    .zip(a_body.par_chunks_exact(N).zip(b_body.par_chunks_exact(N)))
+                    .for_each(|(dst, (a_src, b_src))| {
+                        Op::simd(
+                            Simd::<f64, N>::from_slice(a_src),
+                            Simd::<f64, N>::from_slice(b_src),
+                        )
+                        .copy_to_slice(dst);
+                    });
+                out[body..]
+                    .iter_mut()
+                    .zip(a_tail.iter().zip(b_tail))
+                    .for_each(|(dst, (&a_src, &b_src))| {
+                        *dst = Op::scalar(a_src, b_src);
+                    });
+            }
+            (true, false) => {
+                a_data = &a_view.storage[a_offset..a_offset + size];
+                b_data = &b_view.storage[..];
+                let b_shape: &[usize] = &b_view.shape[..];
+                let b_strides: &[usize] = &b_view.strides[..];
+                out.par_iter_mut().zip((0..size).into_par_iter()).for_each(
+                    |(dst, idx)| {
+                        *dst = Op::scalar(
+                            a_data[idx],
+                            b_data[offset_at(idx, b_offset, b_shape, b_strides)],
+                        )
+                    },
+                );
+            }
+            (false, true) => {
+                b_data = &b_view.storage[b_offset..b_offset + size];
+                a_data = &a_view.storage[..];
+                let a_shape: &[usize] = &a_view.shape[..];
+                let a_strides: &[usize] = &a_view.strides[..];
+                out.par_iter_mut().zip((0..size).into_par_iter()).for_each(
+                    |(dst, idx)| {
+                        *dst = Op::scalar(
+                            a_data[offset_at(idx, a_offset, a_shape, a_strides)],
+                            b_data[idx],
+                        )
+                    },
+                );
+            }
+            (false, false) => {
+                a_data = &a_view.storage[..];
+                b_data = &b_view.storage[..];
+                let a_shape: &[usize] = &a_view.shape[..];
+                let b_shape: &[usize] = &b_view.shape[..];
+                let a_strides: &[usize] = &a_view.strides[..];
+                let b_strides: &[usize] = &b_view.strides[..];
+                out.par_iter_mut().zip((0..size).into_par_iter()).for_each(
+                    |(dst, idx)| {
+                        *dst = Op::scalar(
+                            a_data[offset_at(idx, a_offset, a_shape, a_strides)],
+                            b_data[offset_at(idx, b_offset, b_shape, b_strides)],
+                        )
+                    },
+                );
+            }
+        }
     }
 }
 

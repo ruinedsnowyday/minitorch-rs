@@ -25,7 +25,10 @@ use criterion::{
     BenchmarkId, Criterion, Throughput, criterion_group, criterion_main,
 };
 use rand::Rng;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use rayon::iter::{
+    IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
+    IntoParallelRefMutIterator, ParallelIterator,
+};
 
 use minitorch_rs::fast_ops::FastOps;
 use minitorch_rs::operators;
@@ -262,6 +265,84 @@ fn bench_alloc_floor(c: &mut Criterion) {
     group.finish();
 }
 
+// The decisive companion to `bench_alloc_floor`. That diagnostic showed the
+// map/zip benches above are dominated by *producing the output Vec* (allocate +
+// first-touch fault), which blinds them to SIMD. This group lifts that confound
+// by pre-allocating ONE output buffer per size and reusing it across iterations
+// (faulted during warm-up), then writing into it via the `_into` ops. Three
+// tiers per op decompose the cost cleanly:
+//   `*_alloc`       — the status-quo op (`map_op`/`zip_op`): allocates a fresh
+//                     Vec every call. This is the floor-confounded number.
+//   `*_simd_into`   — `map_op_into`/`zip_op_into` into the reused buffer: SIMD
+//                     compute + memory traffic, NO allocation.
+//   `*_scalar_into` — same reused buffer, scalar closure per element (Rayon but
+//                     no vectorization): the apples-to-apples SIMD baseline.
+// Reads to extract: (alloc − simd_into) = allocation's share; (scalar_into −
+// simd_into) = the *real* vectorization win, finally isolated from alloc noise.
+fn bench_reuse_buffer(c: &mut Criterion) {
+    let mut group = c.benchmark_group("reuse_buffer");
+    group.sample_size(ELEM_SAMPLES);
+    group.warm_up_time(ELEM_WARMUP);
+    group.measurement_time(ELEM_MEASURE);
+    for n in [512usize, 1024, 2048] {
+        let size = n * n;
+        let a = random(vec![n, n]);
+        let b = random(vec![n, n]);
+        // a, b are packed (offset 0, contiguous) so storage == logical data.
+        let a_data: &[f64] = &a.storage;
+        let b_data: &[f64] = &b.storage;
+        // Allocated ONCE, reused (and faulted in warm-up) across every iter.
+        let mut out = vec![0.0f64; size];
+        group.throughput(Throughput::Elements(size as u64));
+
+        // --- map: relu (cheap → bandwidth-bound) ---
+        group.bench_with_input(BenchmarkId::new("relu_alloc", n), &n, |bch, _| {
+            bch.iter(|| FastOps::map_op::<SimdReLU, LANES>(black_box(&a)));
+        });
+        group.bench_with_input(BenchmarkId::new("relu_simd_into", n), &n, |bch, _| {
+            bch.iter(|| {
+                FastOps::map_op_into::<SimdReLU, LANES>(black_box(&a), &mut out);
+                black_box(&mut out);
+            });
+        });
+        group.bench_with_input(BenchmarkId::new("relu_scalar_into", n), &n, |bch, _| {
+            bch.iter(|| {
+                out.par_iter_mut()
+                    .zip(a_data.par_iter())
+                    .for_each(|(o, &x)| *o = operators::relu(x));
+                black_box(&mut out);
+            });
+        });
+
+        // --- zip: add (cheap → bandwidth-bound) ---
+        group.bench_with_input(BenchmarkId::new("add_alloc", n), &n, |bch, _| {
+            bch.iter(|| {
+                FastOps::zip_op::<SimdAdd, LANES>(black_box(&a), black_box(&b))
+            });
+        });
+        group.bench_with_input(BenchmarkId::new("add_simd_into", n), &n, |bch, _| {
+            bch.iter(|| {
+                FastOps::zip_op_into::<SimdAdd, LANES>(
+                    black_box(&a),
+                    black_box(&b),
+                    &mut out,
+                );
+                black_box(&mut out);
+            });
+        });
+        group.bench_with_input(BenchmarkId::new("add_scalar_into", n), &n, |bch, _| {
+            bch.iter(|| {
+                out.par_iter_mut()
+                    .zip(a_data.par_iter())
+                    .zip(b_data.par_iter())
+                    .for_each(|((o, &x), &y)| *o = operators::add(x, y));
+                black_box(&mut out);
+            });
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_matmul,
@@ -271,6 +352,7 @@ criterion_group!(
     bench_zip_broadcast,
     bench_reduce,
     bench_reduce_contiguous,
-    bench_alloc_floor
+    bench_alloc_floor,
+    bench_reuse_buffer
 );
 criterion_main!(benches);

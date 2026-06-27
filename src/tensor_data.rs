@@ -135,7 +135,6 @@ impl TensorData {
         }
         let size = self.size();
         let contiguous_storage = (0..size)
-            .into_iter()
             .map(|idx| self.storage[self.offset_at(idx)])
             .collect();
 
