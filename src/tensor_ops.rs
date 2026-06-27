@@ -1,4 +1,7 @@
-use crate::tensor_data::{TensorData, iter_indices_of_shape};
+use crate::{
+    simd_ops::{BinaryOp, UnaryOp},
+    tensor_data::{TensorData, iter_indices_of_shape},
+};
 use std::rc::Rc;
 
 pub trait TensorOps {
@@ -20,6 +23,20 @@ pub trait TensorOps {
         dim: usize,
         keep_dims: bool,
     ) -> TensorData;
+
+    /// Apply a statically-dispatched unary operation on every element of the tensor
+    fn map_op<Op: UnaryOp, const N: usize>(input: &TensorData) -> TensorData {
+        Self::map(input, Op::scalar)
+    }
+
+    /// Apply a statically-dispatched binary operation on every pair of elements
+    /// of two tensors
+    fn zip_op<Op: BinaryOp, const N: usize>(
+        a: &TensorData,
+        b: &TensorData,
+    ) -> TensorData {
+        Self::zip(a, b, Op::scalar)
+    }
 
     fn matmul(a: &TensorData, b: &TensorData) -> TensorData;
 }

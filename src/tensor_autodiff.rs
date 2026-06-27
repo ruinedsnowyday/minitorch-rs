@@ -1,8 +1,7 @@
 use std::{collections::HashSet, rc::Rc};
 
 use crate::{
-    fast_ops::FastOps,
-    operators,
+    Backend, operators,
     simd_ops::{
         LANES, SimdAdd, SimdLogBack, SimdMul, SimdNeg, SimdReLUBack, SimdSigmoidBack,
     },
@@ -142,11 +141,11 @@ impl TensorGraph {
                 let right_parent_id = node.parents[1];
                 let right_parent = &self.nodes[right_parent_id.0];
                 let left_gradient =
-                    FastOps::zip_op::<SimdMul, LANES>(gradient, &right_parent.out);
+                    Backend::zip_op::<SimdMul, LANES>(gradient, &right_parent.out);
                 let left_gradient_reduced =
                     maybe_reduce_broadcast(&left_gradient, &left_parent.out.shape);
                 let right_gradient =
-                    FastOps::zip_op::<SimdMul, LANES>(gradient, &left_parent.out);
+                    Backend::zip_op::<SimdMul, LANES>(gradient, &left_parent.out);
                 let right_gradient_reduced =
                     maybe_reduce_broadcast(&right_gradient, &right_parent.out.shape);
                 vec![
@@ -156,33 +155,33 @@ impl TensorGraph {
             }
             TensorOp::Neg => {
                 let parent_id = node.parents[0];
-                let parent_gradient = FastOps::map_op::<SimdNeg, LANES>(gradient);
+                let parent_gradient = Backend::map_op::<SimdNeg, LANES>(gradient);
                 vec![(parent_id, parent_gradient)]
             }
             TensorOp::Sigmoid => {
                 let parent_id = node.parents[0];
                 let parent_gradient =
-                    FastOps::zip_op::<SimdSigmoidBack, LANES>(&node.out, gradient);
+                    Backend::zip_op::<SimdSigmoidBack, LANES>(&node.out, gradient);
                 vec![(parent_id, parent_gradient)]
             }
             TensorOp::ReLU => {
                 let parent_id = node.parents[0];
                 let parent = &self.nodes[parent_id.0];
                 let parent_gradient =
-                    FastOps::zip_op::<SimdReLUBack, LANES>(&parent.out, gradient);
+                    Backend::zip_op::<SimdReLUBack, LANES>(&parent.out, gradient);
                 vec![(parent_id, parent_gradient)]
             }
             TensorOp::Log => {
                 let parent_id = node.parents[0];
                 let parent = &self.nodes[parent_id.0];
                 let parent_gradient =
-                    FastOps::zip_op::<SimdLogBack, LANES>(&parent.out, gradient);
+                    Backend::zip_op::<SimdLogBack, LANES>(&parent.out, gradient);
                 vec![(parent_id, parent_gradient)]
             }
             TensorOp::Exp => {
                 let parent_id = node.parents[0];
                 let parent_gradient =
-                    FastOps::zip_op::<SimdMul, LANES>(&node.out, gradient);
+                    Backend::zip_op::<SimdMul, LANES>(&node.out, gradient);
                 vec![(parent_id, parent_gradient)]
             }
             TensorOp::Sum { orig_shape } => {
@@ -213,11 +212,11 @@ impl TensorGraph {
                 let right_parent_id = node.parents[1];
                 let right_parent = &self.nodes[right_parent_id.0];
                 let left_gradient =
-                    FastOps::matmul(gradient, &right_parent.out.permute_last_two());
+                    Backend::matmul(gradient, &right_parent.out.permute_last_two());
                 let left_gradient_reduced =
                     maybe_reduce_broadcast(&left_gradient, &left_parent.out.shape);
                 let right_gradient =
-                    FastOps::matmul(&left_parent.out.permute_last_two(), gradient);
+                    Backend::matmul(&left_parent.out.permute_last_two(), gradient);
                 let right_gradient_reduced =
                     maybe_reduce_broadcast(&right_gradient, &right_parent.out.shape);
                 vec![
@@ -243,7 +242,7 @@ impl TensorGraph {
                 let parent = &mut self.nodes[parent_id.0];
                 parent.gradient = match parent.gradient.take() {
                     Some(old_grad) => {
-                        Some(FastOps::zip_op::<SimdAdd, LANES>(&old_grad, &new_grad))
+                        Some(Backend::zip_op::<SimdAdd, LANES>(&old_grad, &new_grad))
                     }
                     None => Some(new_grad),
                 };
@@ -270,14 +269,14 @@ pub fn maybe_reduce_broadcast(
         return result;
     }
     while result.ndim() > target_shape.len() {
-        result = FastOps::reduce(&result, operators::add, 0., 0, false);
+        result = Backend::reduce(&result, operators::add, 0., 0, false);
     }
     let result_shape = result.shape.clone();
     for (i, (&target_size, result_size)) in
         target_shape.iter().zip(result_shape).enumerate()
     {
         if target_size == 1 && result_size > 1 {
-            result = FastOps::reduce(&result, operators::add, 0., i, true);
+            result = Backend::reduce(&result, operators::add, 0., i, true);
         }
     }
     assert_eq!(

@@ -19,3 +19,5 @@ pub mod tensor_data;
 pub mod tensor_ops;
 pub mod train;
 pub mod xor_network;
+
+pub type Backend = crate::fast_ops::FastOps;
