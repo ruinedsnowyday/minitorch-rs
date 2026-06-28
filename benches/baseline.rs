@@ -286,6 +286,9 @@ fn bench_alloc_floor(c: &mut Criterion) {
 //   (scalar_chunked − simd_into)   = the LANES themselves — explicit SIMD vs what
 //                                    LLVM auto-vectorizes from the same structure.
 // If scalar_chunked ≈ simd_into, the hand-written std::simd bought nothing.
+// `add` carries one extra tier, `add_scalar_flat`: same chunk-8 structure but a
+// flat-indexed scalar inner (LLVM's best shot) — the tiebreaker for whether add's
+// lane edge is real or just `scalar_chunked`'s nested zip auto-vectorizing poorly.
 fn bench_reuse_buffer(c: &mut Criterion) {
     let mut group = c.benchmark_group("reuse_buffer");
     group.sample_size(ELEM_SAMPLES);
@@ -369,6 +372,27 @@ fn bench_reuse_buffer(c: &mut Criterion) {
                         dst.iter_mut()
                             .zip(a_src.iter().zip(b_src))
                             .for_each(|(o, (&x, &y))| *o = operators::add(x, y));
+                    });
+                black_box(&mut out);
+            });
+        });
+        // Tiebreaker for add's lane edge: SAME chunk-8 structure as simd_into, but
+        // the scalar inner written the way LLVM auto-vectorizes best — all three
+        // operands sliced to equal length (kills bounds checks) + a flat index
+        // loop (no nested-iterator state, unlike `scalar_chunked`'s 3-slice zip).
+        // If this matches simd_into, the nested zip was the handicap, not the lanes.
+        group.bench_with_input(BenchmarkId::new("add_scalar_flat", n), &n, |bch, _| {
+            bch.iter(|| {
+                out.par_chunks_exact_mut(LANES)
+                    .zip(a_data.par_chunks_exact(LANES).zip(b_data.par_chunks_exact(LANES)))
+                    .for_each(|(dst, (a_src, b_src))| {
+                        let dst = &mut dst[..LANES];
+                        let a_src = &a_src[..LANES];
+                        let b_src = &b_src[..LANES];
+                        #[allow(clippy::needless_range_loop)]
+                        for i in 0..LANES {
+                            dst[i] = operators::add(a_src[i], b_src[i]);
+                        }
                     });
                 black_box(&mut out);
             });
