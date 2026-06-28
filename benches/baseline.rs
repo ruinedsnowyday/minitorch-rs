@@ -29,6 +29,7 @@ use rayon::iter::{
     IndexedParallelIterator, IntoParallelIterator, IntoParallelRefIterator,
     IntoParallelRefMutIterator, ParallelIterator,
 };
+use rayon::slice::{ParallelSlice, ParallelSliceMut};
 
 use minitorch_rs::fast_ops::FastOps;
 use minitorch_rs::operators;
@@ -269,16 +270,22 @@ fn bench_alloc_floor(c: &mut Criterion) {
 // map/zip benches above are dominated by *producing the output Vec* (allocate +
 // first-touch fault), which blinds them to SIMD. This group lifts that confound
 // by pre-allocating ONE output buffer per size and reusing it across iterations
-// (faulted during warm-up), then writing into it via the `_into` ops. Three
+// (faulted during warm-up), then writing into it via the `_into` ops. Four
 // tiers per op decompose the cost cleanly:
-//   `*_alloc`       — the status-quo op (`map_op`/`zip_op`): allocates a fresh
-//                     Vec every call. This is the floor-confounded number.
-//   `*_simd_into`   — `map_op_into`/`zip_op_into` into the reused buffer: SIMD
-//                     compute + memory traffic, NO allocation.
-//   `*_scalar_into` — same reused buffer, scalar closure per element (Rayon but
-//                     no vectorization): the apples-to-apples SIMD baseline.
-// Reads to extract: (alloc − simd_into) = allocation's share; (scalar_into −
-// simd_into) = the *real* vectorization win, finally isolated from alloc noise.
+//   `*_alloc`          — status-quo op (`map_op`/`zip_op`): allocates a fresh Vec
+//                        every call. The floor-confounded number.
+//   `*_simd_into`      — `*_op_into` into the reused buffer: explicit `Simd<f64,N>`
+//                        over `par_chunks_exact`, NO allocation.
+//   `*_scalar_chunked` — same reused buffer and the SAME `par_chunks_exact(N)`
+//                        structure as simd_into, but a scalar inner loop instead
+//                        of `Op::simd` (lets LLVM auto-vectorize if it can).
+//   `*_scalar_into`    — same reused buffer, element-wise `par_iter` scalar closure.
+// This ladder splits the win into its causes:
+//   (alloc − simd_into)            = allocation's share
+//   (scalar_into − scalar_chunked) = iteration shape (chunked vs element-wise)
+//   (scalar_chunked − simd_into)   = the LANES themselves — explicit SIMD vs what
+//                                    LLVM auto-vectorizes from the same structure.
+// If scalar_chunked ≈ simd_into, the hand-written std::simd bought nothing.
 fn bench_reuse_buffer(c: &mut Criterion) {
     let mut group = c.benchmark_group("reuse_buffer");
     group.sample_size(ELEM_SAMPLES);
@@ -313,6 +320,21 @@ fn bench_reuse_buffer(c: &mut Criterion) {
                 black_box(&mut out);
             });
         });
+        // scalar twin of map_op_into's packed body: same par_chunks_exact(LANES)
+        // structure as simd_into, scalar inner loop instead of Op::simd. (Bench
+        // sizes are multiples of LANES, so chunks_exact has no remainder.)
+        group.bench_with_input(BenchmarkId::new("relu_scalar_chunked", n), &n, |bch, _| {
+            bch.iter(|| {
+                out.par_chunks_exact_mut(LANES)
+                    .zip(a_data.par_chunks_exact(LANES))
+                    .for_each(|(dst, src)| {
+                        dst.iter_mut()
+                            .zip(src)
+                            .for_each(|(o, &x)| *o = operators::relu(x));
+                    });
+                black_box(&mut out);
+            });
+        });
 
         // --- zip: add (cheap → bandwidth-bound) ---
         group.bench_with_input(BenchmarkId::new("add_alloc", n), &n, |bch, _| {
@@ -336,6 +358,18 @@ fn bench_reuse_buffer(c: &mut Criterion) {
                     .zip(a_data.par_iter())
                     .zip(b_data.par_iter())
                     .for_each(|((o, &x), &y)| *o = operators::add(x, y));
+                black_box(&mut out);
+            });
+        });
+        group.bench_with_input(BenchmarkId::new("add_scalar_chunked", n), &n, |bch, _| {
+            bch.iter(|| {
+                out.par_chunks_exact_mut(LANES)
+                    .zip(a_data.par_chunks_exact(LANES).zip(b_data.par_chunks_exact(LANES)))
+                    .for_each(|(dst, (a_src, b_src))| {
+                        dst.iter_mut()
+                            .zip(a_src.iter().zip(b_src))
+                            .for_each(|(o, (&x, &y))| *o = operators::add(x, y));
+                    });
                 black_box(&mut out);
             });
         });
