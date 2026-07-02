@@ -10,7 +10,7 @@
 use std::rc::Rc;
 use std::simd::Simd;
 
-use minitorch_rs::fast_ops::FastOps;
+use minitorch_rs::fast_ops::{FastOps, matmul2d_tiled};
 use minitorch_rs::operators;
 use minitorch_rs::simd_ops::{
     BinaryOp, LANES, SimdAdd, SimdEq, SimdExp, SimdId, SimdInv, SimdInvBack,
@@ -1070,5 +1070,81 @@ fn test_all_binary_ops_match_scalar() {
         // backward derivatives, approx (through recip)
         check_zip_approx::<SimdLogBack, LANES>(&p, &d); // value > 0
         check_zip_approx::<SimdInvBack, LANES>(&s, &d); // value ≠ 0
+    }
+}
+
+// ===================================================================
+// matmul2d_tiled — cache-blocked 2-D matmul, cross-backend equivalence
+//
+// The blocked kernel must equal SimpleOps::matmul (the oracle) on every
+// (m, k, n) shape and every tile size T: T that divides the dims, T that leaves
+// ragged tail tiles, and T larger than the whole matrix (one clamped tile).
+// NON-SQUARE shapes (m, k, n all distinct) are the point — when they're equal
+// every row-major stride (i*n for C, i*c for A, k*n for B) coincides, so a wrong
+// stride passes on a square input and ONLY a distinct-dims shape exposes it.
+// seq() uses small integers, so f64 accumulation is exact regardless of the
+// tile-vs-straight summation order → storage comparison is bit-exact.
+// ===================================================================
+
+fn assert_tiled_matches_oracle<const T: usize>(a: &TensorData, b: &TensorData) {
+    let tiled = matmul2d_tiled::<T>(a, b);
+    let oracle = SimpleOps::matmul(a, b);
+    assert_eq!(
+        tiled.shape, oracle.shape,
+        "shape mismatch: T={} a={:?} b={:?}",
+        T, a.shape, b.shape
+    );
+    assert_eq!(
+        &*tiled.storage, &*oracle.storage,
+        "storage mismatch: T={} a={:?} b={:?}",
+        T, a.shape, b.shape
+    );
+}
+
+// Hand-computed anchor, independent of the oracle. A[2,3] · B[3,4] = C[2,4],
+// deliberately non-square (m=2, n=4). B is [I | ones-column], so
+//   row0 = [1, 2, 3, 1+2+3=6]   row1 = [4, 5, 6, 4+5+6=15].
+// A wrong C row-stride lands collisions/garbage instead.
+#[test]
+fn test_matmul2d_tiled_nonsquare_hand_computed() {
+    let a = TensorData::new(vec![1., 2., 3., 4., 5., 6.], vec![2, 3]);
+    let b = TensorData::new(
+        vec![1., 0., 0., 1., 0., 1., 0., 1., 0., 0., 1., 1.],
+        vec![3, 4],
+    );
+    let c = matmul2d_tiled::<2>(&a, &b);
+    assert_eq!(c.shape, vec![2, 4]);
+    assert_eq!(&*c.storage, &vec![1., 2., 3., 6., 4., 5., 6., 15.]);
+}
+
+// Distinct-dims shapes at several tile sizes: T that leaves tails (2, 3), T that
+// divides (4 on 8s), and T > every dim (64 → a single clamped tile). Squares
+// (6,6,6)/(8,8,8) are included as the case a stride bug would sneak through.
+#[test]
+fn test_matmul2d_tiled_shapes_and_tiles() {
+    let shapes = [(2, 3, 4), (5, 2, 7), (1, 4, 3), (7, 5, 3), (6, 6, 6), (8, 8, 8)];
+    for (m, k, n) in shapes {
+        let a = seq(vec![m, k], 0);
+        let b = seq(vec![k, n], 1);
+        assert_tiled_matches_oracle::<1>(&a, &b);
+        assert_tiled_matches_oracle::<2>(&a, &b);
+        assert_tiled_matches_oracle::<3>(&a, &b);
+        assert_tiled_matches_oracle::<4>(&a, &b);
+        assert_tiled_matches_oracle::<64>(&a, &b);
+    }
+}
+
+proptest! {
+    // Any small (m, k, n) at a fixed tile that ragged-tails most dims.
+    #[test]
+    fn prop_matmul2d_tiled_matches_simpleops(
+        m in 1usize..=8, k in 1usize..=8, n in 1usize..=8
+    ) {
+        let a = seq(vec![m, k], 0);
+        let b = seq(vec![k, n], 1);
+        let tiled = matmul2d_tiled::<3>(&a, &b);
+        let oracle = SimpleOps::matmul(&a, &b);
+        prop_assert_eq!(&tiled.shape, &oracle.shape);
+        prop_assert_eq!(&*tiled.storage, &*oracle.storage);
     }
 }

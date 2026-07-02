@@ -358,3 +358,46 @@ pub fn batched_matmul(a: &TensorData, b: &TensorData) -> TensorData {
         });
     TensorData::new(out_storage, out_shape)
 }
+
+/**
+* Performs matrix multiplication between two contiguous 2d tensors
+*
+* @param a 2D tensor representing left matrix in matrix multiplication, `[m, c]`
+* @param b 2D tensor representing right matrix in matrix multiplication, `[c, n]`
+* @out 2D tensor owning matrix product of input matrices, `[m, n]`
+* @pre Tensors `a` and `b` are packed, their contraction dimensions match
+*/
+pub fn matmul2d_tiled<const T: usize>(a: &TensorData, b: &TensorData) -> TensorData {
+    assert!(
+        a.ndim() == 2 && b.ndim() == 2,
+        "matmul: both operands have to be 2-dimensional, got shapes {:?} and {:?}",
+        a.shape,
+        b.shape
+    );
+    assert!(a.is_packed());
+    assert!(b.is_packed());
+    assert_eq!(a.shape[a.ndim() - 1], b.shape[b.ndim() - 2]);
+    let (m, n) = (a.shape[a.ndim() - 2], b.shape[b.ndim() - 1]);
+    let c = a.shape[a.ndim() - 1];
+    let out_shape: [usize; 2] = [m, n];
+    let a_mat: &[f64] = &a.storage[a.storage_offset..a.storage_offset + m * c];
+    let b_mat: &[f64] = &b.storage[b.storage_offset..b.storage_offset + n * c];
+    let mut c_mat = vec![0.; m * n];
+    for ii in (0..m).step_by(T) {
+        for jj in (0..n).step_by(T) {
+            for kk in (0..c).step_by(T) {
+                let i_end = (ii + T).min(m);
+                for i in ii..i_end {
+                    let k_end = (kk + T).min(c);
+                    for k in kk..k_end {
+                        let j_end = (jj + T).min(n);
+                        for j in jj..j_end {
+                            c_mat[i * n + j] += a_mat[i * c + k] * b_mat[k * n + j];
+                        }
+                    }
+                }
+            }
+        }
+    }
+    TensorData::new(c_mat, out_shape.to_vec())
+}
