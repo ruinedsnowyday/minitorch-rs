@@ -401,6 +401,45 @@ fn bench_reuse_buffer(c: &mut Criterion) {
     group.finish();
 }
 
+// Is `reduce` bandwidth-bound like map/zip — so hand-SIMD is pointless here too?
+// Reduce reads the whole n*n input and writes only an n-element output, so its
+// traffic is ~one read per element (≈8 B/elem) and its output alloc is negligible
+// (no allocation confound, unlike map/zip). So we report `Throughput::Bytes` =
+// input bytes read, and criterion prints achieved READ bandwidth directly. Compare
+// against the memory wall the (bandwidth-bound) map/zip ops hit at 2048 in
+// `reuse_buffer`: relu ≈ 60 GiB/s, add ≈ 87 GiB/s (their Melem/s × bytes-moved/elem).
+// If the contiguous-axis reduce lands in that 60–90 GiB/s ballpark, reduce is
+// bandwidth-bound and a SIMD / multi-accumulator rewrite can't beat it. (Read-only
+// reduce may even EXCEED relu's number — no write-allocate traffic — which is still
+// "memory-bound", just a higher achievable ceiling for a pure-read stream.)
+//
+// Two axes, since the access pattern sets achieved bandwidth:
+//   `contig_axis`  — reduce the LAST axis: each fiber walks a contiguous row
+//                    (unit stride), full cache-line use → best case, the honest
+//                    bandwidth number to compare against the ceiling.
+//   `strided_axis` — reduce axis 0: each fiber walks a column (stride n), the
+//                    cache-hostile case. A large gap below `contig_axis` is wasted
+//                    cache lines, NOT a compute deficit — SIMD wouldn't fix it; that
+//                    gap is a layout lesson, not a vectorization opportunity.
+fn bench_reduce_bandwidth(c: &mut Criterion) {
+    let mut group = c.benchmark_group("reduce_bandwidth");
+    group.sample_size(ELEM_SAMPLES);
+    group.warm_up_time(ELEM_WARMUP);
+    group.measurement_time(ELEM_MEASURE);
+    for n in [512usize, 1024, 2048] {
+        let a = random(vec![n, n]);
+        // Input read dominates; the n-element output is negligible traffic.
+        group.throughput(Throughput::Bytes((n * n * 8) as u64));
+        group.bench_with_input(BenchmarkId::new("contig_axis", n), &n, |bch, _| {
+            bch.iter(|| FastOps::reduce(black_box(&a), operators::add, 0.0, 1, false));
+        });
+        group.bench_with_input(BenchmarkId::new("strided_axis", n), &n, |bch, _| {
+            bch.iter(|| FastOps::reduce(black_box(&a), operators::add, 0.0, 0, false));
+        });
+    }
+    group.finish();
+}
+
 criterion_group!(
     benches,
     bench_matmul,
@@ -410,6 +449,7 @@ criterion_group!(
     bench_zip_broadcast,
     bench_reduce,
     bench_reduce_contiguous,
+    bench_reduce_bandwidth,
     bench_alloc_floor,
     bench_reuse_buffer
 );
