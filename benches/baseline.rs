@@ -31,7 +31,7 @@ use rayon::iter::{
 };
 use rayon::slice::{ParallelSlice, ParallelSliceMut};
 
-use minitorch_rs::fast_ops::FastOps;
+use minitorch_rs::fast_ops::{FastOps, matmul2d_tiled};
 use minitorch_rs::operators;
 use minitorch_rs::simd_ops::{LANES, SimdAdd, SimdExp, SimdReLU};
 use minitorch_rs::tensor_data::TensorData;
@@ -74,6 +74,58 @@ fn bench_matmul(c: &mut Criterion) {
         });
         group.bench_with_input(BenchmarkId::new("fast", n), &n, |bch, _| {
             bch.iter(|| FastOps::matmul(black_box(&a), black_box(&b)));
+        });
+    }
+    group.finish();
+}
+
+// Module 7 — does cache blocking flip matmul from memory-bound to compute-bound?
+// Sweeps a SINGLE function, `matmul2d_tiled::<T>`, over tile sizes, so the only
+// variable is the blocking: same raw-slice access, same single thread, same ikj
+// inner order. That isolates blocking from every other confound.
+//   `notile`   — T = 4096 > every n here, so there is exactly ONE tile spanning
+//                the whole matrix: a plain raw-slice ikj with NO cache blocking,
+//                sharing tiled's exact code path. The honest naive baseline — B
+//                gets re-streamed from L2/L3 on every pass.
+//   `tiled_T{16,32,48,64}` — block for cache. On the w9 (Sapphire Rapids) L1d =
+//                48 KiB = 6144 f64; the "3 T×T tiles co-resident in L1" model caps
+//                useful T at ~45, so this sweep brackets it: 16/32 fit L1, 48 is
+//                marginal, 64 spills to L2. The optimum T and the drop past it ARE
+//                the cache hierarchy showing through.
+//   `simple`   — SimpleOps::matmul: naive AND index-based (offset_at per element).
+//                Reference tier; (simple − notile) is the indexing-vs-slice cost,
+//                (notile − tiled) is pure blocking.
+// Single-thread throughout — this measures BLOCKING alone; Rayon + explicit SIMD
+// come next, layered on the winning T. NOTE: under `-C target-cpu=native` LLVM
+// auto-vectorizes the contiguous inner j-loop in BOTH notile and tiled, so they
+// share the same inner vectorization and the gap is blocking only. Throughput =
+// n^3 mul-adds (FLOP/s proxy), same as `bench_matmul`, so numbers are directly
+// comparable to that group.
+fn bench_matmul_blocked(c: &mut Criterion) {
+    let mut group = c.benchmark_group("matmul_blocked");
+    group.sample_size(MATMUL_SAMPLES);
+    group.measurement_time(MATMUL_MEASURE);
+    for n in [256usize, 512, 1024] {
+        let a = random(vec![n, n]);
+        let b = random(vec![n, n]);
+        group.throughput(Throughput::Elements((n * n * n) as u64));
+        group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
+            bch.iter(|| SimpleOps::matmul(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("notile", n), &n, |bch, _| {
+            bch.iter(|| matmul2d_tiled::<4096>(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("tiled_T16", n), &n, |bch, _| {
+            bch.iter(|| matmul2d_tiled::<16>(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("tiled_T32", n), &n, |bch, _| {
+            bch.iter(|| matmul2d_tiled::<32>(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("tiled_T48", n), &n, |bch, _| {
+            bch.iter(|| matmul2d_tiled::<48>(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("tiled_T64", n), &n, |bch, _| {
+            bch.iter(|| matmul2d_tiled::<64>(black_box(&a), black_box(&b)));
         });
     }
     group.finish();
@@ -443,6 +495,7 @@ fn bench_reduce_bandwidth(c: &mut Criterion) {
 criterion_group!(
     benches,
     bench_matmul,
+    bench_matmul_blocked,
     bench_map_relu,
     bench_map_exp,
     bench_zip,
