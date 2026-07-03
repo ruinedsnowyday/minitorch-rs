@@ -401,3 +401,38 @@ pub fn matmul2d_tiled<const T: usize>(a: &TensorData, b: &TensorData) -> TensorD
     }
     TensorData::new(c_mat, out_shape.to_vec())
 }
+
+pub fn matmul2d_tiled_ik<const T: usize>(
+    a: &TensorData,
+    b: &TensorData,
+) -> TensorData {
+    assert!(
+        a.ndim() == 2 && b.ndim() == 2,
+        "matmul: both operands have to be 2-dimensional, got shapes {:?} and {:?}",
+        a.shape,
+        b.shape
+    );
+    assert!(a.is_packed());
+    assert!(b.is_packed());
+    assert_eq!(a.shape[a.ndim() - 1], b.shape[b.ndim() - 2]);
+    let (m, n) = (a.shape[a.ndim() - 2], b.shape[b.ndim() - 1]);
+    let c = a.shape[a.ndim() - 1];
+    let out_shape: [usize; 2] = [m, n];
+    let a_mat: &[f64] = &a.storage[a.storage_offset..a.storage_offset + m * c];
+    let b_mat: &[f64] = &b.storage[b.storage_offset..b.storage_offset + n * c];
+    let mut c_mat = vec![0.; m * n];
+    for ii in (0..m).step_by(T) {
+        for kk in (0..c).step_by(T) {
+            let i_end = (ii + T).min(m);
+            for i in ii..i_end {
+                let k_end = (kk + T).min(c);
+                for k in kk..k_end {
+                    for j in 0..n {
+                        c_mat[i * n + j] += a_mat[i * c + k] * b_mat[k * n + j];
+                    }
+                }
+            }
+        }
+    }
+    TensorData::new(c_mat, out_shape.to_vec())
+}

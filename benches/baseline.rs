@@ -31,7 +31,7 @@ use rayon::iter::{
 };
 use rayon::slice::{ParallelSlice, ParallelSliceMut};
 
-use minitorch_rs::fast_ops::{FastOps, matmul2d_tiled};
+use minitorch_rs::fast_ops::{FastOps, matmul2d_tiled, matmul2d_tiled_ik};
 use minitorch_rs::operators;
 use minitorch_rs::simd_ops::{LANES, SimdAdd, SimdExp, SimdReLU};
 use minitorch_rs::tensor_data::TensorData;
@@ -92,6 +92,14 @@ fn bench_matmul(c: &mut Criterion) {
 //                useful T at ~45, so this sweep brackets it: 16/32 fit L1, 48 is
 //                marginal, 64 spills to L2. The optimum T and the drop past it ARE
 //                the cache hierarchy showing through.
+//   `tiledik_T{16,32,48,64}` — the controlled experiment: block i and k but
+//                stream the FULL j row (no jj loop), so the inner loop is length
+//                n again and auto-vectorizes like `notile`, while i/k blocking
+//                still gives B-reuse. If the 3-D `tiled` loss was inner-loop
+//                fragmentation (not blocking per se), this row should run at
+//                ~`notile` speed AND be FLAT across T — T no longer sets the
+//                inner-loop length. Flat-and-fast here vs tiled's climb-with-T is
+//                the smoking gun.
 //   `simple`   — SimpleOps::matmul: naive AND index-based (offset_at per element).
 //                Reference tier; (simple − notile) is the indexing-vs-slice cost,
 //                (notile − tiled) is pure blocking.
@@ -126,6 +134,18 @@ fn bench_matmul_blocked(c: &mut Criterion) {
         });
         group.bench_with_input(BenchmarkId::new("tiled_T64", n), &n, |bch, _| {
             bch.iter(|| matmul2d_tiled::<64>(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("tiledik_T16", n), &n, |bch, _| {
+            bch.iter(|| matmul2d_tiled_ik::<16>(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("tiledik_T32", n), &n, |bch, _| {
+            bch.iter(|| matmul2d_tiled_ik::<32>(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("tiledik_T48", n), &n, |bch, _| {
+            bch.iter(|| matmul2d_tiled_ik::<48>(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("tiledik_T64", n), &n, |bch, _| {
+            bch.iter(|| matmul2d_tiled_ik::<64>(black_box(&a), black_box(&b)));
         });
     }
     group.finish();

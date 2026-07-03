@@ -10,7 +10,7 @@
 use std::rc::Rc;
 use std::simd::Simd;
 
-use minitorch_rs::fast_ops::{FastOps, matmul2d_tiled};
+use minitorch_rs::fast_ops::{FastOps, matmul2d_tiled, matmul2d_tiled_ik};
 use minitorch_rs::operators;
 use minitorch_rs::simd_ops::{
     BinaryOp, LANES, SimdAdd, SimdEq, SimdExp, SimdId, SimdInv, SimdInvBack,
@@ -1146,5 +1146,42 @@ proptest! {
         let oracle = SimpleOps::matmul(&a, &b);
         prop_assert_eq!(&tiled.shape, &oracle.shape);
         prop_assert_eq!(&*tiled.storage, &*oracle.storage);
+    }
+}
+
+// matmul2d_tiled_ik — blocks i and k but streams the full j row (the "restore
+// the full-width inner loop" experiment). Correctness must hold for the SAME
+// reasons as the 3-D tiled kernel: same accumulation, only the loop *nesting*
+// changed, so it's checked against the same non-square shapes and tile sizes.
+// The `ik` blocking never touches j, so a wrong C/B stride still only shows up
+// on distinct-dims shapes — the square rows remain the case a bug sneaks past.
+// ===================================================================
+
+fn assert_tiled_ik_matches_oracle<const T: usize>(a: &TensorData, b: &TensorData) {
+    let tiled = matmul2d_tiled_ik::<T>(a, b);
+    let oracle = SimpleOps::matmul(a, b);
+    assert_eq!(
+        tiled.shape, oracle.shape,
+        "shape mismatch: T={} a={:?} b={:?}",
+        T, a.shape, b.shape
+    );
+    assert_eq!(
+        &*tiled.storage, &*oracle.storage,
+        "storage mismatch: T={} a={:?} b={:?}",
+        T, a.shape, b.shape
+    );
+}
+
+#[test]
+fn test_matmul2d_tiled_ik_shapes_and_tiles() {
+    let shapes = [(2, 3, 4), (5, 2, 7), (1, 4, 3), (7, 5, 3), (6, 6, 6), (8, 8, 8)];
+    for (m, k, n) in shapes {
+        let a = seq(vec![m, k], 0);
+        let b = seq(vec![k, n], 1);
+        assert_tiled_ik_matches_oracle::<1>(&a, &b);
+        assert_tiled_ik_matches_oracle::<2>(&a, &b);
+        assert_tiled_ik_matches_oracle::<3>(&a, &b);
+        assert_tiled_ik_matches_oracle::<4>(&a, &b);
+        assert_tiled_ik_matches_oracle::<64>(&a, &b);
     }
 }
