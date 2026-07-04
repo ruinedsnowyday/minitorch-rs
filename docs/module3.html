@@ -363,7 +363,7 @@
 <header>
   <p class="eyebrow">minitorch-rs · module 3</p>
   <h1>Module 3 — Efficiency</h1>
-  <p class="subtitle">Rayon parallelism, SIMD vectorization, and CUDA via cudarc.</p>
+  <p class="subtitle">Rayon parallelism, SIMD vectorization, a BLIS-style GEMM microkernel, and CUDA via cudarc.</p>
   <p class="meta">Cross-doc: <a href="module3.md">module3.md</a> (terse desk reference) · Upstream: <a href="https://minitorch.github.io/module3/module3/">minitorch.github.io/module3</a> · Prior: <a href="module2.html">module2.html</a></p>
 </header>
 
@@ -373,7 +373,7 @@
     <li>1 · <a href="#intro">Intro &amp; how to read</a></li>
     <li>2 · <a href="#why">Why this module exists</a></li>
     <li>3 · <a href="#task-31">Task 3.1 — Parallel + vectorized CPU map / zip / reduce</a></li>
-    <li>4 · <a href="#task-32">Task 3.2 — Parallel fused matmul (CPU)</a></li>
+    <li>4 · <a href="#task-32">Task 3.2 — GEMM microkernel: BLIS iterative vs. cache-oblivious recursive</a></li>
     <li>5 · <a href="#task-33">Task 3.3 — GPU map / zip / reduce (cudarc + NVRTC)</a></li>
     <li>6 · <a href="#task-34">Task 3.4 — CUDA tiled matmul</a></li>
     <li>7 · <a href="#task-35">Task 3.5 — Wiring, verification, benchmarks</a></li>
@@ -1107,7 +1107,23 @@ let s: f64 = chunks.clone()
 
 <section id="task-32">
   <p class="eyebrow">Task 3.2</p>
-  <h2>Parallel fused matmul (CPU)</h2>
+  <h2>GEMM microkernel: BLIS iterative vs. cache-oblivious recursive</h2>
+
+  <p>This task now has two stages, and the doc keeps both because the first
+  one taught the FMA shape the second one still relies on. <strong>Sub-3.2.a</strong>
+  is the naive fused kernel from the original module plan — real speedup over
+  <code>reduce(zip(broadcast(...)))</code>, already living in
+  <code>fast_ops.rs</code> as <code>matmul2d_tiled</code> /
+  <code>matmul2d_tiled_ik</code> and benchmarked. <strong>Sub-3.2.b</strong>
+  through <strong>3.2.d</strong> are the current Module 7 deliverable: a
+  BLIS-style register microkernel shared by two interchangeable outer
+  drivers — cache-aware iterative tiling and cache-oblivious recursion — so a
+  head-to-head benchmark isolates <em>the walk</em> from <em>the leaf</em>.
+  The scaffold lives in <code>src/gemm.rs</code> (stubs, contracts,
+  <code>todo!()</code>) and <code>tests/test_gemm.rs</code> (black-box oracle
+  tests, <code>#[ignore]</code>d until each stage lands).</p>
+
+  <h3>Sub-3.2.a — Naive fused kernel: loop order and the FMA shape</h3>
 
   <p>Matmul cannot be cleanly written as
   <code>reduce(zip(broadcast(a), broadcast(b)))</code>. You could write that
@@ -1197,6 +1213,422 @@ let c = [[4.0, 5.0, 4.0, 5.0],
   still gives 4. Check <code>c[0][1]</code> for that — the correct 5 becomes 2
   under a transpose. Catching either on a 2×3·3×4 takes a minute; catching it
   on a 1024×1024 takes a debugger.</p>
+
+  <h3>Sub-3.2.b — The register microkernel</h3>
+
+  <p><code>matmul2d_tiled_ik</code> above still touches <code>C</code> in
+  memory on every step of the <code>k</code> reduction: load the
+  accumulator, FMA, store it back, <code>K</code> times per output tile. A
+  BLIS-style microkernel removes that traffic entirely. It picks a tiny
+  <code>MR&times;NR</code> block of <code>C</code> — small enough that its
+  accumulators fit in the register file, not the cache — and pins them
+  there for the <em>whole</em> k-strip: load once (or zero), accumulate
+  <code>KC</code> times, store once. Memory sees two round trips per block
+  instead of <code>KC</code>.</p>
+
+  <figure>
+    <svg viewBox="0 0 480 220" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="C accumulator residency: tiled ik versus the register microkernel.">
+      <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
+        <text x="20" y="22" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">tiled_ik — load / FMA / store every k</text>
+        <rect x="24" y="50" width="40" height="30" stroke-width="2.5"/>
+        <text x="44" y="69" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">C</text>
+        <path d="M 82 65 L 455 65"/>
+        <path d="M 455 65 L 448 61 M 455 65 L 448 69"/>
+        <text x="450" y="84" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="end">time</text>
+        <g transform="translate(92, 45)">
+          <path d="M 0 20 L 34 20"/>
+          <path d="M 34 20 L 28 16 M 34 20 L 28 24"/>
+          <path d="M 48 8 L 48 32" stroke-width="2.5"/>
+          <path d="M 74 20 L 40 20"/>
+          <path d="M 40 20 L 46 16 M 40 20 L 46 24"/>
+          <text x="17" y="8" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">load</text>
+          <text x="48" y="44" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">FMA</text>
+          <text x="57" y="8" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">store</text>
+        </g>
+        <g transform="translate(188, 45)">
+          <path d="M 0 20 L 34 20"/>
+          <path d="M 34 20 L 28 16 M 34 20 L 28 24"/>
+          <path d="M 48 8 L 48 32" stroke-width="2.5"/>
+          <path d="M 74 20 L 40 20"/>
+          <path d="M 40 20 L 46 16 M 40 20 L 46 24"/>
+          <text x="48" y="44" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">FMA</text>
+        </g>
+        <g transform="translate(284, 45)">
+          <path d="M 0 20 L 34 20"/>
+          <path d="M 34 20 L 28 16 M 34 20 L 28 24"/>
+          <path d="M 48 8 L 48 32" stroke-width="2.5"/>
+          <path d="M 74 20 L 40 20"/>
+          <path d="M 40 20 L 46 16 M 40 20 L 46 24"/>
+          <text x="48" y="44" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">FMA</text>
+        </g>
+        <g transform="translate(380, 45)">
+          <path d="M 0 20 L 24 20"/>
+          <path d="M 24 20 L 18 16 M 24 20 L 18 24"/>
+          <path d="M 36 8 L 36 32" stroke-width="2.5"/>
+          <text x="36" y="44" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">FMA</text>
+          <path d="M 58 20 L 86 20" stroke-dasharray="2 3"/>
+        </g>
+        <text x="410" y="35" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">repeats K times</text>
+
+        <text x="20" y="125" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">microkernel — accumulate across the whole k-strip</text>
+        <rect x="24" y="155" width="40" height="30" stroke-width="2.5"/>
+        <text x="44" y="174" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">C</text>
+        <path d="M 82 170 L 455 170"/>
+        <path d="M 455 170 L 448 166 M 455 170 L 448 174"/>
+        <path d="M 64 170 L 112 170"/>
+        <path d="M 112 170 L 106 166 M 112 170 L 106 174"/>
+        <text x="96" y="154" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">load/zero</text>
+        <path d="M 160 156 L 160 184" stroke-width="2.5"/>
+        <path d="M 220 156 L 220 184" stroke-width="2.5"/>
+        <path d="M 280 156 L 280 184" stroke-width="2.5"/>
+        <path d="M 340 156 L 340 184" stroke-width="2.5"/>
+        <text x="160" y="200" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">FMA</text>
+        <text x="220" y="200" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">FMA</text>
+        <text x="280" y="200" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">FMA</text>
+        <text x="340" y="200" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">FMA</text>
+        <path d="M 396 170 L 444 170"/>
+        <path d="M 444 170 L 438 166 M 444 170 L 438 174"/>
+        <text x="420" y="154" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">store</text>
+        <path d="M 145 208 L 355 208" stroke-dasharray="3 3"/>
+        <text x="250" y="218" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">C untouched for the whole strip</text>
+      </g>
+    </svg>
+    <figcaption>Figure 3.8 — C accumulator residency: tiled_ik versus the register microkernel. Top: every k-step round-trips C through memory (load, FMA, store). Bottom: the MR×NR block loads into registers once, accumulates through the entire k-strip, and stores once.</figcaption>
+  </figure>
+
+  <p>The scaffold in <code>src/gemm.rs</code> fixes
+  <code>MR = NR = LANES = 8</code>: eight <code>f64</code> accumulator
+  vectors, sized so the block plus a few scratch registers for the A-splat
+  and B-load fit comfortably inside the register file (32 <code>zmm</code>
+  registers on AVX-512). The contract, straight from the module's
+  doc-comments:</p>
+
+<pre><code>/// The register microkernel: `C[i][j] += Σ_p Ap[p][i] · Bp[p][j]` over a strip
+/// of `kc` contraction steps, for `i∈0..MR`, `j∈0..NR`.
+///
+/// - `ap`: `kc*MR` f64, `ap[p*MR + i] == A[i][p]` — the MR values for step `p`
+///   are contiguous.
+/// - `bp`: `kc*NR` f64, `bp[p*NR + j] == B[p][j]` — the NR values for step `p`
+///   are contiguous.
+/// - `c` / `ldc`: element `(i,j)` lives at `c[i*ldc + j]`. The kernel
+///   **accumulates**; the driver zeroes C first.
+fn microkernel(kc: usize, ap: &amp;[f64], bp: &amp;[f64], c: &amp;mut [f64], ldc: usize) {
+    todo!()
+}</code></pre>
+
+  <aside class="callout">
+    <p class="label">Concept</p>
+    <p>Both inputs are already in a layout the microkernel wants — that's
+    what packing (Sub-3.2.c) is for. Build the microkernel <em>before</em>
+    packing exists: hand-write a tiny <code>ap</code>/<code>bp</code> in a
+    unit test with a k-strip you can multiply on paper, and check the
+    kernel against that before any driver calls it. This pins the layout
+    contract early, the same way Sub-3.2.a's hand-checkable fixture pinned
+    the naive loop.</p>
+  </aside>
+
+  <p>Build it scalar first — get the indexing right against a hand-computed
+  product — then vectorize with <code>std::simd</code>: <code>MR</code>
+  accumulator vectors of width <code>NR</code>, and per k-step, one
+  <code>B</code>-vector load, an <code>A</code>-value <code>splat</code> per
+  row, and a <code>mul_add</code> into each accumulator. The
+  <code>MR</code> independent FMA chains are the instruction-level
+  parallelism that keeps the pipeline full — a single long dependency chain
+  would stall on FMA latency between steps.</p>
+
+  <aside class="callout">
+    <p class="label">Verify</p>
+    <p>The whole benefit evaporates if the accumulators spill to the stack.
+    Run <code>cargo asm</code> on the microkernel once it's vectorized (same
+    tool as Sub-3.5.a) and confirm the inner loop reads and writes only
+    vector registers between the first load and the final store — no
+    <code>mov</code> to a stack slot inside the k-loop body. This is the
+    single most important sanity check in the whole GEMM task.</p>
+  </aside>
+
+  <h3>Sub-3.2.c — Packing</h3>
+
+  <p>The microkernel wants <code>ap</code>/<code>bp</code> laid out so every
+  k-step is a dense, unit-stride read (Sub-3.2.b's contract). <code>A</code>
+  and <code>B</code> as stored are row-major with a <em>leading dimension</em>
+  (<code>lda</code>/<code>ldb</code>) usually much larger than
+  <code>MR</code>/<code>NR</code> — reading an <code>MR</code>-strip
+  straight out of <code>A</code> means <code>MR</code> separate cache-line
+  touches, one per row, none contiguous. Packing is a copy: walk the
+  <code>mc&times;kc</code> (or <code>kc&times;nc</code>) block once, in the
+  kernel's traversal order, into a small scratch buffer. Every subsequent
+  read out of that buffer, across every micro-tile that reuses it, is then
+  unit-stride.</p>
+
+  <figure>
+    <svg viewBox="0 0 480 200" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Packing turns a strided A panel into a dense kernel ordered buffer.">
+      <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
+        <text x="20" y="22" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">A as stored (row-major, stride lda)</text>
+        <g transform="translate(24, 42)">
+          <rect x="0" y="0" width="22" height="18"/>
+          <rect x="24" y="0" width="22" height="18"/>
+          <rect x="48" y="0" width="22" height="18"/>
+          <rect x="72" y="0" width="22" height="18"/>
+          <rect x="8" y="30" width="22" height="18"/>
+          <rect x="32" y="30" width="22" height="18"/>
+          <rect x="56" y="30" width="22" height="18"/>
+          <rect x="80" y="30" width="22" height="18"/>
+          <rect x="16" y="60" width="22" height="18"/>
+          <rect x="40" y="60" width="22" height="18"/>
+          <rect x="64" y="60" width="22" height="18"/>
+          <rect x="88" y="60" width="22" height="18"/>
+          <rect x="24" y="90" width="22" height="18"/>
+          <rect x="48" y="90" width="22" height="18"/>
+          <rect x="72" y="90" width="22" height="18"/>
+          <rect x="96" y="90" width="22" height="18"/>
+          <path d="M 122 18 L 122 90" stroke-dasharray="3 3"/>
+          <path d="M 116 18 L 128 18 M 116 90 L 128 90"/>
+          <text x="136" y="58" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none">stride lda</text>
+          <text x="136" y="70" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none">between rows</text>
+        </g>
+
+        <text x="240" y="22" font-family="JetBrains Mono, monospace" font-size="10" fill="#1B1B1B" stroke="none">packed ap (MR-strip contiguous)</text>
+        <g transform="translate(235, 66)" stroke-width="2.5">
+          <rect x="0" y="0" width="18" height="18"/>
+          <rect x="18" y="0" width="18" height="18"/>
+          <rect x="36" y="0" width="18" height="18"/>
+          <rect x="54" y="0" width="18" height="18"/>
+          <rect x="82" y="0" width="18" height="18"/>
+          <rect x="100" y="0" width="18" height="18"/>
+          <rect x="118" y="0" width="18" height="18"/>
+          <rect x="136" y="0" width="18" height="18"/>
+          <rect x="164" y="0" width="18" height="18"/>
+          <rect x="182" y="0" width="18" height="18"/>
+          <rect x="200" y="0" width="18" height="18"/>
+          <rect x="218" y="0" width="18" height="18"/>
+        </g>
+        <g transform="translate(235, 66)">
+          <path d="M -5 -6 L 77 -6 L 77 24 L -5 24 Z" stroke-dasharray="2 2"/>
+          <path d="M 77 9 L 82 9" stroke-dasharray="2 2"/>
+          <path d="M 77 9 L 73 5 M 77 9 L 73 13"/>
+          <path d="M 159 -6 L 241 -6 L 241 24 L 159 24 Z" stroke-dasharray="2 2"/>
+          <text x="118" y="48" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">one k-step = one dense MR read</text>
+        </g>
+
+        <path d="M 48 51 L 235 75" stroke-dasharray="3 3"/>
+        <path d="M 235 75 L 228 70 M 235 75 L 227 78"/>
+        <path d="M 56 81 L 253 75" stroke-dasharray="3 3"/>
+        <path d="M 253 75 L 246 71 M 253 75 L 246 79"/>
+        <path d="M 64 111 L 271 75" stroke-dasharray="3 3"/>
+        <path d="M 271 75 L 264 71 M 271 75 L 265 80"/>
+        <path d="M 72 141 L 289 75" stroke-dasharray="3 3"/>
+        <path d="M 289 75 L 281 72 M 289 75 L 283 81"/>
+        <text x="220" y="126" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">copy / reorder</text>
+      </g>
+    </svg>
+    <figcaption>Figure 3.9 — packing: a strided panel becomes a dense, kernel-ordered buffer. Left: an MR-row strip of A as stored (row-major, stride lda between rows). Right: the same values copied into ap, MR values per k-step laid contiguously — every microkernel load becomes a single dense read.</figcaption>
+  </figure>
+
+<pre><code>/// Pack an `mc×kc` block of A (row-major, `a[i*lda + p]`) into the microkernel's
+/// `ap` layout: `MR`-strips contiguous per k-step. Zero-pads ragged tails to MR.
+fn pack_a(a: &amp;[f64], lda: usize, mc: usize, kc: usize, out: &amp;mut Vec&lt;f64&gt;) {
+    todo!()
+}</code></pre>
+
+  <aside class="callout">
+    <p class="label">Why</p>
+    <p>Packing is not free — it's an extra full pass over the block before
+    any FMA happens. The reason BLIS pays that cost anyway: the packed
+    buffer is <em>reused</em> across every micro-tile in the loop nest that
+    touches it (Sub-3.2.d), so the one-time copy is amortized over many
+    microkernel calls. Skip packing and every micro-tile re-derives its own
+    strided reads from scratch — the cache-line and TLB cost repeats
+    instead of amortizing. Rule of thumb from the BLIS literature: packing
+    accounts for roughly half of the total speedup over an unpacked blocked
+    kernel. Treat that as a hypothesis to confirm on your own numbers, not
+    a given.</p>
+  </aside>
+
+  <p>Ragged tails (<code>mc % MR != 0</code> or <code>kc % NR != 0</code>)
+  get zero-padded to a full <code>MR</code>/<code>NR</code> — the
+  microkernel never needs a bounds check in its hot loop, only the pack
+  step does. Build packing against exact multiples of
+  <code>MR</code>/<code>NR</code> first; add the padding once the
+  exact-multiple case is verified.</p>
+
+  <h3>Sub-3.2.d — Two drivers, one kernel: cache-aware vs. cache-oblivious</h3>
+
+  <p>Microkernel and packing are shared. What differs between
+  <code>matmul_iterative</code> and <code>matmul_recursive</code> is only
+  <em>the walk</em> — how the full <code>m&times;k&times;n</code> problem
+  gets decomposed into microkernel-sized calls. Benchmarking both against
+  the same leaf isolates that one variable.</p>
+
+  <h4>Iterative: BLIS's five loops</h4>
+
+  <p>The classic BLIS structure nests five loops around the microkernel,
+  each one sized to keep a different level of the cache hierarchy
+  resident:</p>
+
+  <figure>
+    <svg viewBox="0 0 520 320" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Five loops around the microkernel mapped to cache levels.">
+      <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
+        <rect x="20" y="35" width="480" height="245"/>
+        <text x="42" y="58" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">jc (NC)</text>
+        <text x="445" y="58" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">column panel</text>
+
+        <rect x="70" y="78" width="380" height="180"/>
+        <text x="92" y="101" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">pc (KC) — packs B</text>
+        <text x="426" y="101" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">L3</text>
+
+        <rect x="115" y="118" width="290" height="120"/>
+        <text x="137" y="141" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">ic (MC) — packs A</text>
+        <text x="382" y="141" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">L2</text>
+
+        <rect x="160" y="154" width="200" height="65"/>
+        <text x="182" y="177" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none">jr (NR)</text>
+        <text x="330" y="174" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">L1</text>
+        <text x="330" y="186" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">active B panel</text>
+
+        <rect x="190" y="185" width="140" height="24" stroke-width="2.5"/>
+        <text x="260" y="201" font-family="JetBrains Mono, monospace" font-size="10" fill="#1B1B1B" stroke="none" text-anchor="middle">ir (MR) → microkernel</text>
+        <text x="260" y="230" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">registers</text>
+
+        <path d="M 260 35 L 260 20"/>
+        <path d="M 260 20 L 256 26 M 260 20 L 264 26"/>
+        <text x="260" y="12" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">outer loops partition work</text>
+        <path d="M 405 280 L 405 302 L 460 302" stroke-dasharray="3 3"/>
+        <text x="390" y="306" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="end">jc/ic across workers</text>
+      </g>
+    </svg>
+    <figcaption>Figure 3.10 — the five loops around the microkernel, mapped to cache levels. jc walks NC-wide column panels; pc walks KC-deep k-panels, packing B once per step into an L3-resident buffer; ic walks MC-tall row panels, packing A into an L2-resident buffer; jr/ir walk NR/MR micro-tiles that call the microkernel directly. jc/ic partition across Rayon workers — disjoint output blocks, no contention.</figcaption>
+  </figure>
+
+  <table>
+    <thead>
+      <tr><th>Loop</th><th>Blocking size</th><th>Cache target</th><th>Packs</th></tr>
+    </thead>
+    <tbody>
+      <tr><td class="mono">jc</td><td class="mono">NC = 4096</td><td>&mdash;</td><td>&mdash;</td></tr>
+      <tr><td class="mono">pc</td><td class="mono">KC = 256</td><td>L3</td><td><code>pack_b</code> (KC×NC)</td></tr>
+      <tr><td class="mono">ic</td><td class="mono">MC = 256</td><td>L2</td><td><code>pack_a</code> (MC×KC)</td></tr>
+      <tr><td class="mono">jr</td><td class="mono">NR = 8</td><td>L1 (active B micro-panel)</td><td>&mdash;</td></tr>
+      <tr><td class="mono">ir</td><td class="mono">MR = 8</td><td>registers</td><td>&mdash;</td></tr>
+    </tbody>
+  </table>
+
+  <p>Zero <code>C</code> once, accumulate over the <code>pc</code> (K) loop
+  — each pass over K adds another KC-deep contribution into the same output
+  block, so the driver must not re-zero between <code>pc</code> steps.
+  Parallelize by partitioning <code>jc</code> and/or <code>ic</code> across
+  Rayon workers: each worker owns a disjoint rectangle of the output, so
+  there's no contention — no different from Sub-3.2.a's row-partitioned
+  naive matmul.</p>
+
+<pre><code>/// Cache-AWARE iterative GEMM. Loop order (outer→inner): jc(NC) → pc(KC, pack B)
+/// → ic(MC, pack A) → jr(NR) → ir(MR) → microkernel. Zero C, accumulate over pc.
+pub fn matmul_iterative(a: &amp;TensorData, b: &amp;TensorData) -&gt; TensorData {
+    todo!()
+}</code></pre>
+
+  <p>Get it correct on exact multiples of
+  <code>MR</code>/<code>NR</code>/<code>MC</code>/<code>KC</code>/<code>NC</code>
+  first; ragged-edge handling — what happens when <code>m % MR != 0</code>
+  at the last <code>ic</code> block — comes last, same discipline as
+  packing.</p>
+
+  <h4>Recursive: split the largest dimension</h4>
+
+  <p>Frigo, Leiserson, Prokop, and Ramachandran's cache-oblivious algorithm
+  takes the opposite approach: no tuned blocking constants at all. Pick
+  whichever of <code>(m, n, k)</code> is currently largest, split it in
+  half, and recurse on the two halves. Stop recursing once the subproblem
+  is small enough that the call overhead is worth amortizing — the base
+  case packs its operands and calls the same microkernel Sub-3.2.b built.</p>
+
+  <figure>
+    <svg viewBox="0 0 480 260" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Cache oblivious recursion splits the largest dimension.">
+      <g stroke="#1F3A5F" stroke-width="1.5" fill="none">
+        <rect x="190" y="18" width="100" height="28"/>
+        <text x="240" y="36" font-family="JetBrains Mono, monospace" font-size="11" fill="#1B1B1B" stroke="none" text-anchor="middle">(m, n, k)</text>
+        <text x="240" y="62" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">split on m (largest)</text>
+
+        <path d="M 220 46 L 150 88"/>
+        <path d="M 260 46 L 330 88"/>
+        <rect x="95" y="88" width="110" height="30"/>
+        <text x="150" y="107" font-family="JetBrains Mono, monospace" font-size="10" fill="#1B1B1B" stroke="none" text-anchor="middle">(m/2, n, k)</text>
+        <rect x="275" y="88" width="110" height="30"/>
+        <text x="330" y="107" font-family="JetBrains Mono, monospace" font-size="10" fill="#1B1B1B" stroke="none" text-anchor="middle">(m/2, n, k)</text>
+        <text x="150" y="135" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">split on k (largest)</text>
+        <text x="330" y="135" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">split on n (largest)</text>
+
+        <path d="M 130 118 L 65 165"/>
+        <path d="M 170 118 L 175 165"/>
+        <path d="M 310 118 L 305 165"/>
+        <path d="M 350 118 L 415 165"/>
+
+        <rect x="16" y="165" width="98" height="40" stroke-width="2.5"/>
+        <text x="65" y="181" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">(m/2,n,k/2)</text>
+        <text x="65" y="195" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">packed microkernel</text>
+        <rect x="126" y="165" width="98" height="40" stroke-width="2.5"/>
+        <text x="175" y="181" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">(m/2,n,k/2)</text>
+        <text x="175" y="195" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">packed microkernel</text>
+        <rect x="256" y="165" width="98" height="40" stroke-width="2.5"/>
+        <text x="305" y="181" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">(m/2,n/2,k)</text>
+        <text x="305" y="195" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">packed microkernel</text>
+        <rect x="366" y="165" width="98" height="40" stroke-width="2.5"/>
+        <text x="415" y="181" font-family="JetBrains Mono, monospace" font-size="9" fill="#1B1B1B" stroke="none" text-anchor="middle">(m/2,n/2,k)</text>
+        <text x="415" y="195" font-family="JetBrains Mono, monospace" font-size="9" fill="#7A7674" stroke="none" text-anchor="middle">packed microkernel</text>
+
+        <path d="M 55 225 L 425 225" stroke-dasharray="3 3"/>
+        <text x="240" y="242" font-family="JetBrains Mono, monospace" font-size="10" fill="#7A7674" stroke="none" text-anchor="middle">no MC/KC/NC anywhere — halving adapts to every cache level</text>
+      </g>
+    </svg>
+    <figcaption>Figure 3.11 — cache-oblivious recursion: split the largest dimension. No MC/KC/NC anywhere; the recursion adapts to every cache level automatically by continuing to halve until the subproblem fits.</figcaption>
+  </figure>
+
+<pre><code>/// Cache-OBLIVIOUS recursive GEMM (Frigo et al.). Split the largest of (m, n, k)
+/// in half and recurse; bottom out into a packed microkernel base case.
+pub fn matmul_recursive(a: &amp;TensorData, b: &amp;TensorData) -&gt; TensorData {
+    todo!()
+}</code></pre>
+
+  <aside class="callout">
+    <p class="label">Why</p>
+    <p>M-splits and N-splits produce two <em>disjoint</em> output blocks —
+    safe to run with <code>rayon::join</code>. A K-split is different: both
+    halves write into the <em>same</em> output block and must be summed, so
+    running them concurrently is a data race on <code>C</code> unless you
+    accumulate into separate temporaries and add afterward. The scaffold's
+    rule: keep K-splits serial. This is the one correctness-critical
+    decision in the recursive driver — get it wrong and the failure is
+    silent on small inputs (Rayon may schedule the two joins sequentially
+    anyway) and only shows up under contention on larger ones.</p>
+  </aside>
+
+  <p>Two structural assumptions make the miss bound
+  (<code>O(1 + mnk / (L&middot;&radic;Z))</code>, where <code>Z</code> is
+  cache size and <code>L</code> the cache-line size) hold without ever
+  naming a cache size in the code: the <em>tall-cache assumption</em>
+  (<code>Z = &Omega;(L&sup2;)</code>, true of every real cache) and
+  <em>splitting the largest dimension</em> each time, which keeps the
+  recursion balanced instead of degenerating into a long thin sliver that
+  thrashes. Reference: Frigo, Leiserson, Prokop, Ramachandran, "Cache-Oblivious
+  Algorithms," ACM TALG 8(1), 2012
+  (<a href="https://doi.org/10.1145/2071379.2071383">DOI 10.1145/2071379.2071383</a>)
+  — the recursive matmul is one of its headline results.</p>
+
+  <h3>Tests for the microkernel stage</h3>
+
+  <p><code>tests/test_gemm.rs</code> is black-box: it only compares
+  <code>matmul_iterative</code>/<code>matmul_recursive</code> against
+  <code>SimpleOps::matmul</code> (the trusted oracle), on non-square shapes
+  (a packing/indexing bug can hide on a square input where every stride
+  coincides) and on sizes that straddle the register tile
+  (<code>MR=NR=8</code>) to force ragged-edge handling. Every test is
+  <code>#[ignore]</code>d until its driver exists — drop the
+  <code>#[ignore]</code> line as each stage goes from <code>todo!()</code>
+  to working, the same red&rarr;green rhythm as the rest of the framework.
+  Before any driver compiles, write the suggested first test yourself:
+  hand-build a tiny packed <code>ap</code>/<code>bp</code> with a k-strip
+  you can multiply on paper, call <code>microkernel</code> directly, and
+  assert the result — that pins the packed-layout contract in isolation,
+  before packing or either driver exists to obscure a bug.</p>
 </section>
 
 <hr class="rule">
@@ -1676,6 +2108,19 @@ pub type Backend = fast_ops::FastOps;</code></pre>
   the doc.</strong> You measure on your machine cold, you record, the
   gap is the lesson.</p>
 
+  <p>The GEMM microkernel gets its own comparison group,
+  <code>bench_gemm</code> in <code>benches/baseline.rs</code>:
+  <code>simple</code> (<code>SimpleOps::matmul</code>) vs.
+  <code>tiledik_T32</code> (<code>matmul2d_tiled_ik::&lt;32&gt;</code>,
+  Sub-3.2.a's naive fused kernel) vs. <code>iterative</code> vs.
+  <code>recursive</code>, at n = 512, 1024, 2048. It's written but not yet
+  wired into <code>criterion_group!</code> — both drivers still
+  <code>todo!()</code>-panic, so running it would crash the harness.
+  Uncomment the registration once both pass their oracle tests. The
+  question this group answers: does tuned cache-aware blocking beat
+  zero-tuning cache-oblivious recursion, and by how much — the hypothesis
+  from Sub-3.2.d, checked against your own hardware, not assumed.</p>
+
   <h3>Sub-3.5.a — Did SIMD actually emit?</h3>
 
   <p>Rust gives you no compile-time guarantee that your <code>std::simd</code>
@@ -1868,9 +2313,22 @@ RUSTFLAGS="-C target-cpu=native" cargo build --release           # whatever this
     transposed-indexing bug? Trace one output cell on paper.</li>
     <li>Running <code>cargo asm</code> on <code>FastOps::map</code>: what
     instruction proves SIMD emitted, and what instruction proves it didn't?</li>
+    <li>Why must the register microkernel's C accumulators stay resident
+    across the <em>entire</em> k-strip, and what breaks — concretely, not
+    just "it's slower" — if <code>MR&times;NR</code> is too large for the
+    register file?</li>
+    <li>What does packing buy you that reading A/B directly through their
+    row-major strides doesn't? Why is <code>ap</code> laid out
+    MR-strips-contiguous rather than plain row-major?</li>
+    <li>In <code>matmul_recursive</code>, why is <code>rayon::join</code>
+    safe on an M-split or N-split but not on a K-split? Name the race
+    concretely.</li>
+    <li>State the cache-oblivious miss-bound intuition in one sentence:
+    what do "split the largest dimension" and the tall-cache assumption
+    each buy you?</li>
   </ol>
 
-  <p>If you can answer all eight without notes, Module 3 is in your hands.
+  <p>If you can answer all twelve without notes, Module 3 is in your hands.
   That is the measure of done — not the test suite, not the benchmark.</p>
 </section>
 
