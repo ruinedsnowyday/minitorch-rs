@@ -32,6 +32,7 @@ use rayon::iter::{
 use rayon::slice::{ParallelSlice, ParallelSliceMut};
 
 use minitorch_rs::fast_ops::{FastOps, matmul2d_tiled, matmul2d_tiled_ik};
+use minitorch_rs::gemm::{matmul_iterative, matmul_recursive};
 use minitorch_rs::operators;
 use minitorch_rs::simd_ops::{LANES, SimdAdd, SimdExp, SimdReLU};
 use minitorch_rs::tensor_data::TensorData;
@@ -146,6 +147,40 @@ fn bench_matmul_blocked(c: &mut Criterion) {
         });
         group.bench_with_input(BenchmarkId::new("tiledik_T64", n), &n, |bch, _| {
             bch.iter(|| matmul2d_tiled_ik::<64>(black_box(&a), black_box(&b)));
+        });
+    }
+    group.finish();
+}
+
+// The headline comparison of the gemm module: the microkernel-based drivers vs.
+// the current CPU champ (`tiledik`) vs. the naive oracle. `iterative` = BLIS-style
+// cache-aware tiling; `recursive` = Frigo cache-oblivious recursion; both share the
+// same register microkernel, so the gap between them is the WALK (tuned blocking vs
+// obliviousness), not the leaf. Larger n than `matmul_blocked` on purpose — the
+// microkernel's win over `tiledik` should widen as B outgrows cache. Throughput =
+// n^3 mul-adds (FLOP/s proxy), comparable to the other matmul groups.
+// NOTE: panics (`todo!()`) until the gemm drivers are implemented — that's why it's
+// NOT yet in `criterion_group!`. Implement, then uncomment the registration below.
+#[allow(dead_code)] // remove once `bench_gemm` is added to criterion_group!
+fn bench_gemm(c: &mut Criterion) {
+    let mut group = c.benchmark_group("gemm");
+    group.sample_size(MATMUL_SAMPLES);
+    group.measurement_time(MATMUL_MEASURE);
+    for n in [512usize, 1024, 2048] {
+        let a = random(vec![n, n]);
+        let b = random(vec![n, n]);
+        group.throughput(Throughput::Elements((n * n * n) as u64));
+        group.bench_with_input(BenchmarkId::new("simple", n), &n, |bch, _| {
+            bch.iter(|| SimpleOps::matmul(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("tiledik_T32", n), &n, |bch, _| {
+            bch.iter(|| matmul2d_tiled_ik::<32>(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("iterative", n), &n, |bch, _| {
+            bch.iter(|| matmul_iterative(black_box(&a), black_box(&b)));
+        });
+        group.bench_with_input(BenchmarkId::new("recursive", n), &n, |bch, _| {
+            bch.iter(|| matmul_recursive(black_box(&a), black_box(&b)));
         });
     }
     group.finish();
@@ -516,6 +551,7 @@ criterion_group!(
     benches,
     bench_matmul,
     bench_matmul_blocked,
+    // bench_gemm,  // <- uncomment once the gemm drivers are implemented (they todo!()-panic until then)
     bench_map_relu,
     bench_map_exp,
     bench_zip,

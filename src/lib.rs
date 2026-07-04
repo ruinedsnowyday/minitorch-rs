@@ -8,6 +8,7 @@
 pub mod autodiff;
 pub mod datasets;
 pub mod fast_ops;
+pub mod gemm;
 pub mod loss;
 pub mod module;
 pub mod nn;
